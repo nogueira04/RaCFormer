@@ -7,7 +7,10 @@ from pyquaternion import Quaternion
 import torch
 from nuscenes.utils.data_classes import RadarPointCloud, LidarPointCloud, PointCloud
 from nuscenes.nuscenes import NuScenes
-
+from nuscenes.eval.detection.evaluate import NuScenesEval
+from nuscenes.eval.common.loaders import load_gt as original_load_gt
+from nuscenes.eval.detection.data_classes import DetectionBox
+from nuscenes.eval.common.data_classes import EvalBoxes
 from typing import Tuple, List, Dict
 from nuscenes.utils.geometry_utils import transform_matrix
 from functools import reduce
@@ -35,10 +38,147 @@ class CustomNuScenesDataset(NuScenesDataset):
             self.max_samples = None
 
     def evaluate(self, results, logger=None, **kwargs):
-        if self.max_samples is not None:
-            print(f"\n[WARNING] Mini evaluation with {self.max_samples} samples. Skipping standard NuScenes evaluation due to sample mismatch.")
-            return dict()
-        return super().evaluate(results, logger=logger, **kwargs)
+        # Filter predictions to front only (x > 0)
+        # RaCFormer output is in LiDAR coordinates (x-forward, y-left, z-up)
+        # We want to keep boxes with x > 0 (approx front 180)
+        # Actually, let's be more precise if possible, but x > 0 is a good start for "front".
+        # The user mentioned "front ~190 degrees", which implies slightly more than 180.
+        # But x > 0 is safe.
+        
+        # However, results is a list of dicts or similar.
+        # mmdet3d results are usually list of dicts per sample.
+        # We need to filter them before passing to super().evaluate?
+        # super().evaluate calls self._evaluate_single which converts results to NuScenes format.
+        # It's better to let super().evaluate do the conversion, then intercept inside NuScenesEval?
+        # No, super().evaluate creates NuScenesEval and runs it.
+        
+        # We can override _evaluate_single or just copy-paste the logic of evaluate from mmdet3d.
+        # Since we can't easily copy-paste due to dependencies, let's try to monkeypatch NuScenesEval.
+        
+        # Actually, we can filter `results` before passing to super().evaluate?
+        # `results` contains 'boxes_3d'.
+        # If we filter `results`, the `NuScenesEval` will still load ALL GT and complain about missing predictions if we don't predict for all samples (in mini mode).
+        # And if we predict for all but filter some boxes, it's fine.
+        
+        # So we MUST monkeypatch load_gt to fix the GT side.
+        
+        # Define the custom load_gt
+        def custom_load_gt(nusc, eval_split, box_cls, verbose=False):
+            gt_boxes = original_load_gt(nusc, eval_split, box_cls, verbose)
+            
+            # Filter by sample tokens (for mini evaluation)
+            if self.max_samples is not None:
+                valid_tokens = set([info['token'] for info in self.data_infos])
+                new_boxes = EvalBoxes()
+                for sample_token in gt_boxes.sample_tokens:
+                    if sample_token in valid_tokens:
+                        new_boxes.add_boxes(sample_token, gt_boxes[sample_token])
+                gt_boxes = new_boxes
+            
+            # Filter by FOV (Front only, x > 0 in ego frame)
+            # GT boxes are in global frame. We need to convert to ego frame to check x > 0.
+            # This is expensive.
+            # Alternatively, we can check if the box is within the FOV of the sensors?
+            # But we don't have easy access to sensor calibs here for every box.
+            
+            # Wait, NuScenesEval usually evaluates in Global frame.
+            # But to filter "front", we need relation to Ego.
+            # We can use nusc to get ego pose.
+            
+            filtered_boxes = EvalBoxes()
+            for sample_token in gt_boxes.sample_tokens:
+                sample = nusc.get('sample', sample_token)
+                # Get ego pose at timestamp
+                # Actually, sample data has ego pose.
+                # Let's use the first lidar sample data for ego pose? Or any.
+                # sample['data']['LIDAR_TOP'] gives lidar token.
+                sd_record = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+                cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
+                pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
+                
+                # Global to Ego
+                # We want to filter boxes that are "in front" of the ego vehicle.
+                # Box frame: Global.
+                # Ego frame: x-forward.
+                
+                boxes = gt_boxes[sample_token]
+                valid_boxes = []
+                for box in boxes:
+                    # box.translation is [x, y, z] in global
+                    # Convert to ego
+                    # translation - pose_translation
+                    # rotate by inverse pose_rotation
+                    trans = np.array(box.translation) - np.array(pose_record['translation'])
+                    rot = Quaternion(pose_record['rotation']).inverse
+                    trans = rot.rotate(trans)
+                    
+                    # Check x > 0 (Front)
+                    # Also maybe check y range?
+                    # User said "front ~190 degrees". x > -epsilon?
+                    # Let's use x > 0 for now.
+                    if trans[0] > 0:
+                        valid_boxes.append(box)
+                
+                filtered_boxes.add_boxes(sample_token, valid_boxes)
+            
+            return filtered_boxes
+
+        # Monkeypatch
+        import nuscenes.eval.detection.evaluate as eval_module
+        original_load_gt_func = eval_module.load_gt
+        eval_module.load_gt = custom_load_gt
+        
+        try:
+            # Also filter predictions in results?
+            # mmdet3d results are in LiDAR frame (usually).
+            # If we filter GT, we should also filter predictions to be fair?
+            # If we don't filter predictions, false positives in the back will be penalized (as there is no GT there).
+            # So yes, we must filter predictions too.
+            
+            # Filter results (list of dicts)
+            # Each result dict has 'boxes_3d' (LiDARInstance3DBoxes) and 'scores_3d', 'labels_3d'.
+            # LiDARInstance3DBoxes are in LiDAR frame (x-forward).
+            # So we can just filter by x > 0.
+            
+            import copy
+            results = copy.deepcopy(results)
+            print(f"Filtering predictions to Front-Only (Ego X > 0)...")
+            for i, res in enumerate(results):
+                if 'pts_bbox' in res:
+                    res = res['pts_bbox']
+                
+                boxes_3d = res['boxes_3d']
+                scores_3d = res['scores_3d']
+                labels_3d = res['labels_3d']
+                
+                # Get calibration for this sample
+                info = self.data_infos[i]
+                lidar2ego_translation = info['lidar2ego_translation']
+                lidar2ego_rotation = info['lidar2ego_rotation']
+                
+                # Transform centers to Ego frame
+                centers = boxes_3d.center # [N, 3]
+                # Rotate
+                rot = Quaternion(lidar2ego_rotation).rotation_matrix
+                centers_ego = centers @ rot.T + np.array(lidar2ego_translation)
+                
+                # Filter Ego X > 0
+                mask = centers_ego[:, 0] > 0
+                
+                res['boxes_3d'] = boxes_3d[mask]
+                res['scores_3d'] = scores_3d[mask]
+                res['labels_3d'] = labels_3d[mask]
+                
+                if 'pts_bbox' in results[i]:
+                    results[i]['pts_bbox'] = res
+                else:
+                    results[i] = res
+
+            print(f"Starting evaluation...")
+            return super().evaluate(results, logger=logger, **kwargs)
+        finally:
+            # Restore
+            eval_module.load_gt = original_load_gt_func
 
 
     def collect_sweeps(self, index, into_past=60, into_future=60):
