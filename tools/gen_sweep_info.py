@@ -10,7 +10,7 @@ from pyquaternion import Quaternion
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data-root', default='data/nuscenes')
+parser.add_argument('--data-root', default='/mnt/nfs/shared/nuscenes/')
 parser.add_argument('--version', default='v1.0-trainval')
 args = parser.parse_args()
 
@@ -110,13 +110,13 @@ if __name__ == '__main__':
     nusc = NuScenes(args.version, args.data_root)
 
     if args.version == 'v1.0-trainval':
-        sample_infos = pickle.load(open(os.path.join(args.data_root, 'nuscenes_infos_train.pkl'), 'rb'))
-        sample_infos = add_sweep_info(nusc, sample_infos)
-        mmcv.dump(sample_infos, os.path.join(args.data_root, 'nuscenes_infos_train_sweep.pkl'))
+        # sample_infos = pickle.load(open('/srv/nfs/shared/gnmp/RaCFormer/nuscenes_infos_train.pkl', 'rb'))
+        # sample_infos = add_sweep_info(nusc, sample_infos)
+        # mmcv.dump(sample_infos, '/srv/nfs/shared/gnmp/RaCFormer/nuscenes_infos_train.pkl')
 
-        sample_infos = pickle.load(open(os.path.join(args.data_root, 'nuscenes_infos_val.pkl'), 'rb'))
+        sample_infos = pickle.load(open('/srv/nfs/shared/gnmp/RaCFormer/nuscenes_infos_val.pkl', 'rb'))
         sample_infos = add_sweep_info(nusc, sample_infos)
-        mmcv.dump(sample_infos, os.path.join(args.data_root, 'nuscenes_infos_val_sweep.pkl'))
+        mmcv.dump(sample_infos, '/srv/nfs/shared/gnmp/RaCFormer/nuscenes_infos_val.pkl')
 
     elif args.version == 'v1.0-test':
         sample_infos = pickle.load(open(os.path.join(args.data_root, 'nuscenes_infos_test.pkl'), 'rb'))

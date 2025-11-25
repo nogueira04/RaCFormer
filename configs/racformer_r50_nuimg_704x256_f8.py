@@ -2,7 +2,7 @@ import torch
 pi = torch.pi
 
 dataset_type = 'CustomNuScenesDataset_radar'
-dataset_root = 'data/nuscenes/'
+dataset_root = './data/nuscenes/'
 
 input_modality = dict(
     use_lidar=False,
@@ -62,6 +62,7 @@ grid_config = {
 
 numC_Trans = 256
 file_client_args = dict(backend='disk')
+
 
 img_backbone = dict(
     type='ResNet',
@@ -251,7 +252,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         data_root=dataset_root,
-        ann_file=dataset_root + 'nuscenes_infos_train_sweep.pkl',
+        ann_file=dataset_root + 'nuscenes_infos_train_sweep_fixed.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -261,7 +262,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=dataset_root,
-        ann_file=dataset_root + 'nuscenes_infos_val_sweep.pkl',
+        ann_file='/srv/nfs/shared/gnmp/RaCFormer/nuscenes_infos_val_sweep.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

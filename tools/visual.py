@@ -455,7 +455,7 @@ def render_sample_data(
     plt.close()
 
 if __name__ == '__main__':
-    nusc = NuScenes(version='v1.0-trainval', dataroot='./data/nuscenes', verbose=True)
+    nusc = NuScenes(version='v1.0-trainval', dataroot='/mnt/nfs/shared/nuscenes/', verbose=True)
     results = mmcv.load('submission/pts_bbox/r50_f8_results_nusc.json')
     sample_token_list = list(results['results'].keys())
     for id in range(0, 6019):

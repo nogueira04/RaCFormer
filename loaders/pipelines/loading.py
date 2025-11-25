@@ -65,8 +65,8 @@ class LoadMultiViewImageFromMultiSweepsFuture(object):
             return results
 
         cam_types = [
-            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
-            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT'
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  
         ]
 
         if self.test_mode:
@@ -615,9 +615,9 @@ class LoadMultiViewImageFromMultiSweeps(object):
 
     def load_offline(self, results):
         cam_types = [
-            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
-            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT'
-        ]
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
+        ]   
 
         if len(results['sweeps']['prev']) == 0:
             for _ in range(self.sweeps_num):
@@ -676,8 +676,8 @@ class LoadMultiViewImageFromMultiSweeps(object):
         assert self.test_interval == 6
 
         cam_types = [
-            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
-            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT'
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
         ]
 
         if len(results['sweeps']['prev']) == 0:
@@ -822,12 +822,11 @@ class LoadradarpointsFromMultiSweeps(object):
 
     def load_offline(self, results):
         rad_types = [
-            'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT',
-            'RADAR_BACK_LEFT', 'RADAR_BACK_RIGHT'
+            'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT'
         ]
         cam_types = [
-            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
-            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT'
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
         ]
         if len(results['sweeps']['prev']) == 0:
             for _ in range(self.sweeps_num):
@@ -884,13 +883,12 @@ class LoadradarpointsFromMultiSweeps(object):
         assert self.test_interval == 6
 
         rad_types = [
-            'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT',
-            'RADAR_BACK_LEFT', 'RADAR_BACK_RIGHT'
+            'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT'
         ]
 
         cam_types = [
-            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
-            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT'
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
         ]
         
         if len(results['sweeps']['prev']) == 0:
