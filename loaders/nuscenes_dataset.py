@@ -19,6 +19,27 @@ renusc = NuScenes(version=nu_version, dataroot=str('data/nuscenes/'), verbose=Fa
 
 @DATASETS.register_module()
 class CustomNuScenesDataset(NuScenesDataset):
+    def __init__(self, 
+                 camera_types=None,
+                 radar_types=None,
+                 max_samples=None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.camera_types = camera_types
+        self.radar_types = radar_types
+        
+        if max_samples is not None:
+            self.data_infos = self.data_infos[:max_samples]
+            self.max_samples = max_samples
+        else:
+            self.max_samples = None
+
+    def evaluate(self, results, logger=None, **kwargs):
+        if self.max_samples is not None:
+            print(f"\n[WARNING] Mini evaluation with {self.max_samples} samples. Skipping standard NuScenes evaluation due to sample mismatch.")
+            return dict()
+        return super().evaluate(results, logger=logger, **kwargs)
+
 
     def collect_sweeps(self, index, into_past=60, into_future=60):
         all_sweeps_prev = []
@@ -70,7 +91,14 @@ class CustomNuScenesDataset(NuScenesDataset):
             img_timestamps = []
             lidar2img_rts = []
             cam_intrinsics = []
-            for _, cam_info in info['cams'].items():
+            if self.camera_types is None:
+                # Default to all cameras if not specified
+                cams_to_use = info['cams'].items()
+            else:
+                cams_to_use = [(k, v) for k, v in info['cams'].items() if k in self.camera_types]
+
+            for _, cam_info in cams_to_use:
+
                 img_paths.append(os.path.relpath(cam_info['data_path']))
                 img_timestamps.append(cam_info['timestamp'] / 1e6)
 
@@ -132,7 +160,14 @@ class CustomNuScenesDataset_radar(CustomNuScenesDataset):
             img_timestamps = []
             lidar2img_rts = []
             cam_intrinsics = []
-            for _, cam_info in info['cams'].items():
+            if self.camera_types is None:
+                # Default to all cameras if not specified
+                cams_to_use = info['cams'].items()
+            else:
+                cams_to_use = [(k, v) for k, v in info['cams'].items() if k in self.camera_types]
+
+            for _, cam_info in cams_to_use:
+
                 img_paths.append(os.path.relpath(cam_info['data_path']))
                 img_timestamps.append(cam_info['timestamp'] / 1e6)
 
@@ -168,7 +203,7 @@ class CustomNuScenesDataset_radar(CustomNuScenesDataset):
 
 drop=False
 
-def get_nu_radar(sam_idx, mutil_sweep=True, num_sweeps=6, filter=True, radar_sample_rec=None, drop=drop):
+def get_nu_radar(sam_idx, mutil_sweep=True, num_sweeps=6, filter=True, radar_sample_rec=None, drop=drop, radar_types=None):
     ref_sample_rec = renusc.get('sample', sam_idx)
     datas = ref_sample_rec['data']
     radar_tokens = []
@@ -178,10 +213,13 @@ def get_nu_radar(sam_idx, mutil_sweep=True, num_sweeps=6, filter=True, radar_sam
     ref_chan = 'LIDAR_TOP'
     ref_sd_record = renusc.get('sample_data', datas[ref_chan])
 
-    rad_types = [
-        'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT',
-        'RADAR_BACK_LEFT', 'RADAR_BACK_RIGHT'
-    ]
+    if radar_types is None:
+        rad_types = [
+            'RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT',
+            'RADAR_BACK_LEFT', 'RADAR_BACK_RIGHT'
+        ]
+    else:
+        rad_types = radar_types
     
     if drop:
         max_drop = 5

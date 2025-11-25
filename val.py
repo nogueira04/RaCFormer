@@ -19,6 +19,10 @@ from models.utils import VERSION
 def evaluate(dataset, results, epoch):
     metrics = dataset.evaluate(results, jsonfile_prefix='submission')
 
+    if not metrics:
+        logging.warning('No metrics returned. Skipping evaluation report.')
+        return {}
+
     mAP = metrics['pts_bbox_NuScenes/mAP']
     mATE = metrics['pts_bbox_NuScenes/mATE']
     mASE = metrics['pts_bbox_NuScenes/mASE']

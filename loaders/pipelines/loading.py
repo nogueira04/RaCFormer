@@ -44,11 +44,13 @@ class LoadMultiViewImageFromMultiSweepsFuture(object):
                  prev_sweeps_num=5,
                  next_sweeps_num=5,
                  color_type='color',
-                 test_mode=False):
+                 test_mode=False,
+                 cam_types=None):
         self.prev_sweeps_num = prev_sweeps_num
         self.next_sweeps_num = next_sweeps_num
         self.color_type = color_type
         self.test_mode = test_mode
+        self.cam_types = cam_types
 
         assert prev_sweeps_num == next_sweeps_num
 
@@ -64,10 +66,13 @@ class LoadMultiViewImageFromMultiSweepsFuture(object):
         if self.prev_sweeps_num == 0 and self.next_sweeps_num == 0:
             return results
 
-        cam_types = [
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  
-        ]
+        if self.cam_types is None:
+            cam_types = [
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  
+            ]
+        else:
+            cam_types = self.cam_types
 
         if self.test_mode:
             interval = self.test_interval
@@ -600,10 +605,12 @@ class LoadMultiViewImageFromMultiSweeps(object):
     def __init__(self,
                  sweeps_num=5,
                  color_type='color',
-                 test_mode=False):
+                 test_mode=False,
+                 cam_types=None):
         self.sweeps_num = sweeps_num
         self.color_type = color_type
         self.test_mode = test_mode
+        self.cam_types = cam_types
 
         self.train_interval = [4, 8]
         self.test_interval = 6
@@ -614,10 +621,13 @@ class LoadMultiViewImageFromMultiSweeps(object):
             mmcv.use_backend('cv2')
 
     def load_offline(self, results):
-        cam_types = [
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
-        ]   
+        if self.cam_types is None:
+            cam_types = [
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
+            ]
+        else:
+            cam_types = self.cam_types
 
         if len(results['sweeps']['prev']) == 0:
             for _ in range(self.sweeps_num):
@@ -674,11 +684,14 @@ class LoadMultiViewImageFromMultiSweeps(object):
         # only used when measuring FPS
         assert self.test_mode
         assert self.test_interval == 6
-
-        cam_types = [
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-            'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
-        ]
+        
+        if self.cam_types is None:
+            cam_types = [
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                'CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'  # Duplicate front 3 to fill 6 slots
+            ]
+        else:
+            cam_types = self.cam_types
 
         if len(results['sweeps']['prev']) == 0:
             for _ in range(self.sweeps_num):
@@ -753,7 +766,8 @@ class Loadnuradarpoints(object):
                  num_sweeps=5,
                  norm_time=False,
                  filter=True,
-                 file_client_args=dict(backend='disk')):
+                 file_client_args=dict(backend='disk'),
+                 radar_types=None):
         
         assert coord_type in ['CAMERA', 'LIDAR', 'DEPTH', 'RADAR']
         
@@ -765,6 +779,7 @@ class Loadnuradarpoints(object):
         self.filter = filter
         self.file_client_args = file_client_args.copy()
         self.file_client = None
+        self.radar_types = radar_types
 
     def __call__(self, results,):
         """Call function to load points data from file.
@@ -779,7 +794,7 @@ class Loadnuradarpoints(object):
                 - points (:obj:`BasePoints`): Point clouds data.
         """
         #todo change by the mmcv.load! flient
-        points, radar_tokens, times = self.get_nu_radar(results['sample_idx'], True, self.num_sweeps, filter=self.filter)
+        points, radar_tokens, times = self.get_nu_radar(results['sample_idx'], True, self.num_sweeps, filter=self.filter, radar_types=self.radar_types)
         points = torch.cat([points, times], dim=0)
         points[2 , :] = 0 #-0.15
 

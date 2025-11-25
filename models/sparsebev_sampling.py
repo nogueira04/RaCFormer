@@ -43,7 +43,7 @@ def sampling_4d(sample_points, mlvl_feats, scale_weights, lidar2img, image_h, im
     """
 
     B, Q, T, G, P, _ = sample_points.shape  # [B, Q, T, G, P, 3]
-    N = 6
+    N = lidar2img.shape[1] // T
     
     sample_points = sample_points.reshape(B, Q, T, G * P, 3)
 

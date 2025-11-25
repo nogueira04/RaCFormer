@@ -31,17 +31,19 @@ class RaCFormerTransformer(BaseModule):
                  num_ray=150, 
                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
-                 init_cfg=None):
+                 init_cfg=None,
+                 num_cams=6):
         assert init_cfg is None, 'To prevent abnormal initialization ' \
                             'behavior, init_cfg is not allowed to be set'
         super(RaCFormerTransformer, self).__init__(init_cfg=init_cfg)
 
         self.embed_dims = embed_dims
         self.pc_range = pc_range
+        self.num_cams = num_cams
 
         self.decoder = RaCFormerTransformerDecoder(embed_dims, num_frames, num_points, num_points_bev, num_layers, num_levels, num_classes, code_size, \
                                                    img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, pc_range=pc_range, num_ray=num_ray, \
-                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes)
+                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams)
 
     @torch.no_grad()
     def init_weights(self):
@@ -72,10 +74,12 @@ class RaCFormerTransformerDecoder(BaseModule):
                  num_ray=150, 
                  d_region_list=[0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
-                 init_cfg=None):
+                 init_cfg=None,
+                 num_cams=6):
         super(RaCFormerTransformerDecoder, self).__init__(init_cfg)
         self.num_layers = num_layers
         self.pc_range = pc_range
+        self.num_cams = num_cams
 
         # params are shared across all decoder layers
         self.decoder_layer = RaCFormerTransformerDecoderLayer(
@@ -93,7 +97,7 @@ class RaCFormerTransformerDecoder(BaseModule):
 
         # calculate time difference according to timestamps
         timestamps = np.array([m['img_timestamp'] for m in img_metas], dtype=np.float64)
-        timestamps = np.reshape(timestamps, [query_bbox.shape[0], -1, 6])
+        timestamps = np.reshape(timestamps, [query_bbox.shape[0], -1, self.num_cams])
         time_diff = timestamps[:, :1, :] - timestamps
         time_diff = np.mean(time_diff, axis=-1).astype(np.float32)  # [B, F]
         time_diff = torch.from_numpy(time_diff).to(query_bbox.device)  # [B, F]
@@ -107,7 +111,7 @@ class RaCFormerTransformerDecoder(BaseModule):
         # group image features in advance for sampling, see `sampling_4d` for more details
         for lvl, feat in enumerate(mlvl_feats):
             B, TN, GC, H, W = feat.shape  # [B, TN, GC, H, W]
-            N, T, G, C = 6, TN // 6, 4, GC // 4
+            N, T, G, C = self.num_cams, TN // self.num_cams, 4, GC // 4
             feat = feat.reshape(B, T, N, G, C, H, W)
 
             if MSMV_CUDA:  # Our CUDA operator requires channel_last
