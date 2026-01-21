@@ -498,7 +498,11 @@ class PointToMultiViewDepth(object):
         points_lidar = results['points']
         img = results['img'][0]
         depth_map_list = []
-        lidar2imgs = results['lidar2img'][:6]
+        # Use number of images in first frame (already filtered by cam_types in dataset)
+        num_cams = len(results['img']) // (len(results['lidar2img']) // len(results['img']) + 1) if len(results['lidar2img']) > len(results['img']) else len(results['img'])
+        # For first frame, just use the images loaded (which determines num_cams)
+        num_cams_first_frame = len(results['img'])
+        lidar2imgs = results['lidar2img'][:num_cams_first_frame]
         for lidar2img in lidar2imgs:
             lidar2img = torch.from_numpy(lidar2img).to(torch.float32)
             points_img = points_lidar.tensor[:, :3].matmul(
@@ -552,8 +556,10 @@ class RadarPointToMultiViewDepth(object):
         points_radar_ms = results['radar_points']
         img = results['img'][0]
         depth_map_list, rcs_map_list = [], []
+        # Infer number of cameras from images vs lidar2img ratio
+        num_cams = len(results['lidar2img']) // len(points_radar_ms)
         for i, points_radar in enumerate(points_radar_ms):
-            lidar2imgs = results['lidar2img'][i*6:(i+1)*6]
+            lidar2imgs = results['lidar2img'][i*num_cams:(i+1)*num_cams]
             for lidar2img in lidar2imgs:
                 lidar2img = torch.from_numpy(lidar2img).to(torch.float32)
                 points_img = points_radar.tensor[:, :3].matmul(
@@ -576,7 +582,9 @@ class RadarPointToMultiViewDepth(object):
         points_radar = results['radar_points'][0]
         img = results['img'][0]
         depth_map_list, rcs_map_list = [], []
-        lidar2imgs = results['lidar2img'][:6]
+        # Use number of images in first frame
+        num_cams = len(results['img'])
+        lidar2imgs = results['lidar2img'][:num_cams]
         for lidar2img in lidar2imgs:
             lidar2img = torch.from_numpy(lidar2img).to(torch.float32)
             points_img = points_radar.tensor[:, :3].matmul(

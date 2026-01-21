@@ -17,7 +17,31 @@ from mmdet3d.models import build_model
 from loaders.builder import build_dataloader
 from os import path as osp
 
+import subprocess
+
+def init_slurm_env():
+    if 'SLURM_PROCID' in os.environ:
+        os.environ['RANK'] = os.environ['SLURM_PROCID']
+        os.environ['LOCAL_RANK'] = os.environ['SLURM_LOCALID']
+        os.environ['WORLD_SIZE'] = os.environ['SLURM_NTASKS']
+        
+        try:
+            node_list = os.environ['SLURM_NODELIST']
+            master_node = subprocess.check_output(
+                f'scontrol show hostnames "{node_list}" | head -n 1', shell=True
+            ).decode('utf-8').strip()
+            os.environ['MASTER_ADDR'] = master_node
+        except Exception as e:
+            logging.warning(f"Failed to resolve MASTER_ADDR from SLURM_NODELIST: {e}")
+            # Fallback or let torch handle it if possible (unlikely)
+        
+        if 'MASTER_PORT' not in os.environ:
+            os.environ['MASTER_PORT'] = '29500'
+            
+        print(f"Slurm environment detected: RANK={os.environ['RANK']}, LOCAL_RANK={os.environ['LOCAL_RANK']}, WORLD_SIZE={os.environ['WORLD_SIZE']}, MASTER_ADDR={os.environ.get('MASTER_ADDR')}")
+
 def main():
+    init_slurm_env()
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument('--config', required=True)
     parser.add_argument('--override', nargs='+', action=DictAction)
@@ -52,8 +76,9 @@ def main():
 
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
+    rank = int(os.environ.get('RANK', local_rank))
 
-    if local_rank == 0:
+    if rank == 0:
         # resume or start a new run
         if cfgs.resume_from is not None:
             assert os.path.isfile(cfgs.resume_from)
@@ -68,9 +93,10 @@ def main():
             # work_dir = os.path.join('outputs', cfgs.model.type, run_name)
             work_dir = os.path.join('outputs', cfgs.work_dir, run_name)
             if os.path.exists(work_dir):  # must be an empty dir
-                if input('Path "%s" already exists, overwrite it? [Y/n] ' % work_dir) == 'n':
-                    print('Bye.')
-                    exit(0)
+                if 'SLURM_PROCID' not in os.environ:
+                    if input('Path "%s" already exists, overwrite it? [Y/n] ' % work_dir) == 'n':
+                        print('Bye.')
+                        exit(0)
                 shutil.rmtree(work_dir)
 
             os.makedirs(work_dir, exist_ok=False)

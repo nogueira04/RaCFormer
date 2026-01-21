@@ -240,7 +240,7 @@ class RaCFormer(MVXTwoStageDetector):
             img_nograd = img[:, self.stop_prev_grad:]
 
             img_feats_fpn, img_lss_feats = self.extract_img_feat(img_grad.reshape(-1, C, H, W))
-            mlp_input = self.img_lss_view_transformer.get_mlp_input(img_metas)
+            mlp_input = self.img_lss_view_transformer.get_mlp_input(img_metas, self.num_cams)
             mlp_input_nograd = mlp_input[:, self.stop_prev_grad*N:]
             
             _, C_lss, h, w = img_lss_feats.shape
@@ -301,7 +301,7 @@ class RaCFormer(MVXTwoStageDetector):
             _, C_lss, h, w = img_lss_feats.shape
             img_lss_feats = img_lss_feats.view(B, NT, C_lss, h, w)
 
-            mlp_input = self.img_lss_view_transformer.get_mlp_input(img_metas)
+            mlp_input = self.img_lss_view_transformer.get_mlp_input(img_metas, self.num_cams)
 
             radar_bev_feats = []
             all_bev_feats = []
@@ -437,7 +437,10 @@ class RaCFormer(MVXTwoStageDetector):
             img_metas[i]['gt_bboxes_3d'] = gt_bboxes_3d[i]
             img_metas[i]['gt_labels_3d'] = gt_labels_3d[i]
 
-        losses = self.forward_pts_train(img_feats, bev_feats, radar_bev_feats, depth, gt_bboxes_3d, gt_labels_3d, gt_depth, img_metas, gt_bboxes_ignore)
+        # gt_depth contains all frames, but depth loss is only computed for first frame
+        # Slice to first num_cams cameras (first frame only)
+        gt_depth_first_frame = gt_depth[:, :self.num_cams].contiguous()
+        losses = self.forward_pts_train(img_feats, bev_feats, radar_bev_feats, depth, gt_bboxes_3d, gt_labels_3d, gt_depth_first_frame, img_metas, gt_bboxes_ignore)
         return losses
 
     def forward_test(self, img_metas, img=None, **kwargs):
