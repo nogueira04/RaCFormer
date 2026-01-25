@@ -37,148 +37,101 @@ class CustomNuScenesDataset(NuScenesDataset):
         else:
             self.max_samples = None
 
-    def evaluate(self, results, logger=None, **kwargs):
-        # Filter predictions to front only (x > 0)
-        # RaCFormer output is in LiDAR coordinates (x-forward, y-left, z-up)
-        # We want to keep boxes with x > 0 (approx front 180)
-        # Actually, let's be more precise if possible, but x > 0 is a good start for "front".
-        # The user mentioned "front ~190 degrees", which implies slightly more than 180.
-        # But x > 0 is safe.
+    def evaluate(self, results, logger=None, front_only=False, **kwargs):
+        """Evaluate detection results using NuScenes evaluation.
         
-        # However, results is a list of dicts or similar.
-        # mmdet3d results are usually list of dicts per sample.
-        # We need to filter them before passing to super().evaluate?
-        # super().evaluate calls self._evaluate_single which converts results to NuScenes format.
-        # It's better to let super().evaluate do the conversion, then intercept inside NuScenesEval?
-        # No, super().evaluate creates NuScenesEval and runs it.
-        
-        # We can override _evaluate_single or just copy-paste the logic of evaluate from mmdet3d.
-        # Since we can't easily copy-paste due to dependencies, let's try to monkeypatch NuScenesEval.
-        
-        # Actually, we can filter `results` before passing to super().evaluate?
-        # `results` contains 'boxes_3d'.
-        # If we filter `results`, the `NuScenesEval` will still load ALL GT and complain about missing predictions if we don't predict for all samples (in mini mode).
-        # And if we predict for all but filter some boxes, it's fine.
-        
-        # So we MUST monkeypatch load_gt to fix the GT side.
-        
-        # Define the custom load_gt
-        def custom_load_gt(nusc, eval_split, box_cls, verbose=False):
-            gt_boxes = original_load_gt(nusc, eval_split, box_cls, verbose)
+        Args:
+            results: Detection results
+            logger: Logger for output
+            front_only: If True, filter GT and predictions to front-only (x > 0).
+                       This is used for 3-camera subset evaluation.
+                       Default: False (full 360° evaluation).
+            **kwargs: Additional arguments passed to parent evaluate
             
-            # Filter by sample tokens (for mini evaluation)
-            if self.max_samples is not None:
-                valid_tokens = set([info['token'] for info in self.data_infos])
-                new_boxes = EvalBoxes()
+        Returns:
+            dict: Evaluation metrics
+        """
+        # Only apply front-only filtering if explicitly requested
+        if front_only:
+            # Define the custom load_gt for front-only evaluation
+            def custom_load_gt(nusc, eval_split, box_cls, verbose=False):
+                gt_boxes = original_load_gt(nusc, eval_split, box_cls, verbose)
+                
+                # Filter by sample tokens (for mini evaluation)
+                if self.max_samples is not None:
+                    valid_tokens = set([info['token'] for info in self.data_infos])
+                    new_boxes = EvalBoxes()
+                    for sample_token in gt_boxes.sample_tokens:
+                        if sample_token in valid_tokens:
+                            new_boxes.add_boxes(sample_token, gt_boxes[sample_token])
+                    gt_boxes = new_boxes
+                
+                # Filter by FOV (Front only, x > 0 in ego frame)
+                filtered_boxes = EvalBoxes()
                 for sample_token in gt_boxes.sample_tokens:
-                    if sample_token in valid_tokens:
-                        new_boxes.add_boxes(sample_token, gt_boxes[sample_token])
-                gt_boxes = new_boxes
-            
-            # Filter by FOV (Front only, x > 0 in ego frame)
-            # GT boxes are in global frame. We need to convert to ego frame to check x > 0.
-            # This is expensive.
-            # Alternatively, we can check if the box is within the FOV of the sensors?
-            # But we don't have easy access to sensor calibs here for every box.
-            
-            # Wait, NuScenesEval usually evaluates in Global frame.
-            # But to filter "front", we need relation to Ego.
-            # We can use nusc to get ego pose.
-            
-            filtered_boxes = EvalBoxes()
-            for sample_token in gt_boxes.sample_tokens:
-                sample = nusc.get('sample', sample_token)
-                # Get ego pose at timestamp
-                # Actually, sample data has ego pose.
-                # Let's use the first lidar sample data for ego pose? Or any.
-                # sample['data']['LIDAR_TOP'] gives lidar token.
-                sd_record = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
-                cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
-                pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
-                
-                # Global to Ego
-                # We want to filter boxes that are "in front" of the ego vehicle.
-                # Box frame: Global.
-                # Ego frame: x-forward.
-                
-                boxes = gt_boxes[sample_token]
-                valid_boxes = []
-                for box in boxes:
-                    # box.translation is [x, y, z] in global
-                    # Convert to ego
-                    # translation - pose_translation
-                    # rotate by inverse pose_rotation
-                    trans = np.array(box.translation) - np.array(pose_record['translation'])
-                    rot = Quaternion(pose_record['rotation']).inverse
-                    trans = rot.rotate(trans)
+                    sample = nusc.get('sample', sample_token)
+                    sd_record = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+                    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
                     
-                    # Check x > 0 (Front)
-                    # Also maybe check y range?
-                    # User said "front ~190 degrees". x > -epsilon?
-                    # Let's use x > 0 for now.
-                    if trans[0] > 0:
-                        valid_boxes.append(box)
+                    boxes = gt_boxes[sample_token]
+                    valid_boxes = []
+                    for box in boxes:
+                        trans = np.array(box.translation) - np.array(pose_record['translation'])
+                        rot = Quaternion(pose_record['rotation']).inverse
+                        trans = rot.rotate(trans)
+                        
+                        if trans[0] > 0:
+                            valid_boxes.append(box)
+                    
+                    filtered_boxes.add_boxes(sample_token, valid_boxes)
                 
-                filtered_boxes.add_boxes(sample_token, valid_boxes)
-            
-            return filtered_boxes
+                return filtered_boxes
 
-        # Monkeypatch
-        import nuscenes.eval.detection.evaluate as eval_module
-        original_load_gt_func = eval_module.load_gt
-        eval_module.load_gt = custom_load_gt
-        
-        try:
-            # Also filter predictions in results?
-            # mmdet3d results are in LiDAR frame (usually).
-            # If we filter GT, we should also filter predictions to be fair?
-            # If we don't filter predictions, false positives in the back will be penalized (as there is no GT there).
-            # So yes, we must filter predictions too.
+            # Monkeypatch
+            import nuscenes.eval.detection.evaluate as eval_module
+            original_load_gt_func = eval_module.load_gt
+            eval_module.load_gt = custom_load_gt
             
-            # Filter results (list of dicts)
-            # Each result dict has 'boxes_3d' (LiDARInstance3DBoxes) and 'scores_3d', 'labels_3d'.
-            # LiDARInstance3DBoxes are in LiDAR frame (x-forward).
-            # So we can just filter by x > 0.
-            
-            import copy
-            results = copy.deepcopy(results)
-            print(f"Filtering predictions to Front-Only (Ego X > 0)...")
-            for i, res in enumerate(results):
-                if 'pts_bbox' in res:
-                    res = res['pts_bbox']
-                
-                boxes_3d = res['boxes_3d']
-                scores_3d = res['scores_3d']
-                labels_3d = res['labels_3d']
-                
-                # Get calibration for this sample
-                info = self.data_infos[i]
-                lidar2ego_translation = info['lidar2ego_translation']
-                lidar2ego_rotation = info['lidar2ego_rotation']
-                
-                # Transform centers to Ego frame
-                centers = boxes_3d.center # [N, 3]
-                # Rotate
-                rot = Quaternion(lidar2ego_rotation).rotation_matrix
-                centers_ego = centers @ rot.T + np.array(lidar2ego_translation)
-                
-                # Filter Ego X > 0
-                mask = centers_ego[:, 0] > 0
-                
-                res['boxes_3d'] = boxes_3d[mask]
-                res['scores_3d'] = scores_3d[mask]
-                res['labels_3d'] = labels_3d[mask]
-                
-                if 'pts_bbox' in results[i]:
-                    results[i]['pts_bbox'] = res
-                else:
-                    results[i] = res
+            try:
+                # Filter predictions
+                import copy
+                results = copy.deepcopy(results)
+                print(f"Filtering predictions to Front-Only (Ego X > 0)...")
+                for i, res in enumerate(results):
+                    if 'pts_bbox' in res:
+                        res = res['pts_bbox']
+                    
+                    boxes_3d = res['boxes_3d']
+                    scores_3d = res['scores_3d']
+                    labels_3d = res['labels_3d']
+                    
+                    info = self.data_infos[i]
+                    lidar2ego_translation = info['lidar2ego_translation']
+                    lidar2ego_rotation = info['lidar2ego_rotation']
+                    
+                    centers = boxes_3d.center
+                    rot = Quaternion(lidar2ego_rotation).rotation_matrix
+                    centers_ego = centers @ rot.T + np.array(lidar2ego_translation)
+                    
+                    mask = centers_ego[:, 0] > 0
+                    
+                    res['boxes_3d'] = boxes_3d[mask]
+                    res['scores_3d'] = scores_3d[mask]
+                    res['labels_3d'] = labels_3d[mask]
+                    
+                    if 'pts_bbox' in results[i]:
+                        results[i]['pts_bbox'] = res
+                    else:
+                        results[i] = res
 
-            print(f"Starting evaluation...")
+                print(f"Starting front-only evaluation...")
+                return super().evaluate(results, logger=logger, **kwargs)
+            finally:
+                eval_module.load_gt = original_load_gt_func
+        else:
+            # Standard full 360° evaluation (original nuScenes protocol)
             return super().evaluate(results, logger=logger, **kwargs)
-        finally:
-            # Restore
-            eval_module.load_gt = original_load_gt_func
+
 
 
     def collect_sweeps(self, index, into_past=60, into_future=60):
@@ -273,6 +226,42 @@ class CustomNuScenesDataset(NuScenesDataset):
 @DATASETS.register_module()
 class CustomNuScenesDataset_radar(CustomNuScenesDataset):
 
+    def _get_scene_condition(self, sample_token):
+        """
+        Extract scene condition from nuScenes scene description.
+        
+        ORACLE TEST: This function parses the scene description to classify
+        the condition as 'night', 'rain', or 'day' (default).
+        
+        nuScenes scene descriptions contain keywords like:
+        - "night" for night scenes
+        - "rain", "rainy" for rainy conditions
+        - Most other scenes are daytime/clear
+        
+        Args:
+            sample_token: The sample token to get condition for
+            
+        Returns:
+            str: 'night', 'rain', or 'day'
+        """
+        try:
+            sample = renusc.get('sample', sample_token)
+            scene = renusc.get('scene', sample['scene_token'])
+            description = scene.get('description', '').lower()
+            
+            # Check for night condition
+            if 'night' in description:
+                return 'night'
+            # Check for rain condition
+            elif 'rain' in description or 'rainy' in description:
+                return 'rain'
+            # Default to day/clear
+            else:
+                return 'day'
+        except Exception:
+            # If we can't determine, default to 'day'
+            return 'day'
+
     def get_data_info(self, index):
         info = self.data_infos[index]
         sweeps_prev, sweeps_next = self.collect_sweeps(index)
@@ -284,6 +273,8 @@ class CustomNuScenesDataset_radar(CustomNuScenesDataset):
         ego2global_rotation = Quaternion(ego2global_rotation).rotation_matrix
         lidar2ego_rotation = Quaternion(lidar2ego_rotation).rotation_matrix
 
+        scene_condition = self._get_scene_condition(info['token'])
+
         input_dict = dict(
             sample_idx=info['token'],
             sweeps={'prev': sweeps_prev, 'next': sweeps_next},
@@ -293,6 +284,7 @@ class CustomNuScenesDataset_radar(CustomNuScenesDataset):
             ego2global_rotation=ego2global_rotation,
             lidar2ego_translation=lidar2ego_translation,
             lidar2ego_rotation=lidar2ego_rotation,
+            scene_condition=scene_condition,
         )
 
         if self.modality['use_camera']:
