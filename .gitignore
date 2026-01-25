@@ -5,6 +5,13 @@
 *.PNG
 
 *.json
+*.pdf
+*.md
+
+eval_outputs/
+outputs/
+video_outputs_3d/
+slurm_logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
