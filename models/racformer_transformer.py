@@ -32,7 +32,9 @@ class RaCFormerTransformer(BaseModule):
                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
                  init_cfg=None,
-                 num_cams=6):
+                 num_cams=6,
+                 oracle_fusion=False,  # ORACLE TEST: Enable condition-based adaptive fusion
+                 oracle_weights=None):  # Runtime weights: {condition: [img, lss, radar]}
         assert init_cfg is None, 'To prevent abnormal initialization ' \
                             'behavior, init_cfg is not allowed to be set'
         super(RaCFormerTransformer, self).__init__(init_cfg=init_cfg)
@@ -43,7 +45,8 @@ class RaCFormerTransformer(BaseModule):
 
         self.decoder = RaCFormerTransformerDecoder(embed_dims, num_frames, num_points, num_points_bev, num_layers, num_levels, num_classes, code_size, \
                                                    img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, pc_range=pc_range, num_ray=num_ray, \
-                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams)
+                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams,
+                                                    oracle_fusion=oracle_fusion, oracle_weights=oracle_weights)
 
     @torch.no_grad()
     def init_weights(self):
@@ -75,7 +78,9 @@ class RaCFormerTransformerDecoder(BaseModule):
                  d_region_list=[0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
                  init_cfg=None,
-                 num_cams=6):
+                 num_cams=6,
+                 oracle_fusion=False,  # ORACLE TEST: Enable condition-based adaptive fusion
+                 oracle_weights=None):  # Runtime weights: {condition: [img, lss, radar]}
         super(RaCFormerTransformerDecoder, self).__init__(init_cfg)
         self.num_layers = num_layers
         self.pc_range = pc_range
@@ -86,6 +91,8 @@ class RaCFormerTransformerDecoder(BaseModule):
             embed_dims, num_frames, num_points, num_points_bev, num_levels, num_classes, code_size, \
                 img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, num_ray=num_ray, pc_range=pc_range, \
                     d_region_list=d_region_list, spatial_shapes=spatial_shapes,
+                    oracle_fusion=oracle_fusion,  # ORACLE TEST: Pass fusion mode to decoder layer
+                    oracle_weights=oracle_weights,  # ORACLE TEST: Pass runtime weights
         )
 
     @torch.no_grad()
@@ -159,6 +166,8 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
                  pc_range=[], 
                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
+                 oracle_fusion=False,  # ORACLE TEST: Enable condition-based adaptive fusion
+                 oracle_weights=None,  # Runtime weights: {condition: [img, lss, radar]}
                  init_cfg=None):
         super(RaCFormerTransformerDecoderLayer, self).__init__(init_cfg)
 
@@ -166,6 +175,8 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         self.num_classes = num_classes
         self.code_size = code_size
         self.pc_range = pc_range
+        self.oracle_fusion = oracle_fusion  # ORACLE TEST: Store fusion mode flag
+        self.oracle_weights = oracle_weights  # Runtime configurable weights
 
         self.position_encoder = nn.Sequential(
             nn.Linear(3, self.embed_dims), 
@@ -254,7 +265,48 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         sampled_feat = self.sampling(query_bbox, query_feat, mlvl_feats, img_metas, d_region=self.d_region_list[layer])
 
         query_feat = self.norm2(self.mixing(sampled_feat, query_feat))
-        query_feat = self.norm_fusion(self.fusion(torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)))
+        
+        # ============================================================================
+        # ORACLE TEST: Condition-based adaptive fusion weights
+        # This replaces the simple concatenation fusion with weighted sum
+        # Weights are manually tuned for different conditions:
+        #   - Day/Clear: [0.4, 0.3, 0.3] (img, lss, radar) - balanced
+        #   - Night: [0.2, 0.2, 0.6] (img, lss, radar) - trust radar more
+        #   - Rain: [0.3, 0.2, 0.5] (img, lss, radar) - trust radar more
+        # Set oracle_fusion=True to enable, False to use original fusion
+        # ============================================================================
+        oracle_fusion = getattr(self, 'oracle_fusion', False)
+        
+        if oracle_fusion:
+            # Get condition from img_metas (default to 'day' if not specified)
+            condition = img_metas[0].get('scene_condition', 'day')
+            
+            # Get weights from config or use defaults
+            oracle_weights = getattr(self, 'oracle_weights', None)
+            
+            if oracle_weights and condition in oracle_weights:
+                weights = oracle_weights[condition]
+            else:
+                # Default weights if not specified at runtime
+                if condition == 'night':
+                    weights = [0.2, 0.2, 0.6]  # Trust radar more at night
+                elif condition == 'rain':
+                    weights = [0.3, 0.2, 0.5]  # Trust radar more in rain
+                else:  # day/clear or any other condition
+                    weights = [0.4, 0.3, 0.3]  # Balanced, slight image preference
+            
+            # Scale inputs BEFORE concatenation (keep trained fusion layer)
+            scaled_img_feat = weights[0] * query_feat
+            scaled_lss_feat = weights[1] * query_lss_feat
+            scaled_radar_feat = weights[2] * query_radar_feat
+            
+            # Use the trained fusion layer with scaled inputs
+            query_feat = self.norm_fusion(self.fusion(
+                torch.cat((scaled_img_feat, scaled_radar_feat, scaled_lss_feat), dim=-1)))
+        else:
+            # Original fusion: concatenation followed by linear projection
+            query_feat = self.norm_fusion(self.fusion(torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)))
+        
         query_feat = self.norm3(self.ffn(query_feat))
 
         cls_score = self.cls_branch(query_feat)  # [B, Q, num_classes]
