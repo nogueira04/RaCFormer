@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from mmcv.runner.hooks import HOOKS, Hook
+from mmengine.hooks import Hook
+from mmengine.registry import HOOKS
 from .utils import is_parallel
 
 __all__ = ['SequentialControlHook', 'HisInfoControlHook']

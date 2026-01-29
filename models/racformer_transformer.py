@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from mmcv.runner import BaseModule
-from mmcv.cnn import bias_init_with_prob, xavier_init
-from mmcv.cnn.bricks.transformer import MultiheadAttention, FFN, build_positional_encoding
-from mmdet.models.utils.builder import TRANSFORMER
+from mmengine.model import BaseModule
+from mmengine.model.weight_init import bias_init_with_prob, xavier_init
+from mmcv.cnn.bricks.transformer import MultiheadAttention, FFN
+from mmdet.models.layers.positional_encoding import LearnedPositionalEncoding
+from mmdet3d.registry import MODELS as TRANSFORMER
 from .bbox.utils import decode_bbox, theta_d2xy_coods, xy2theta_d_coods
 from .utils import inverse_sigmoid, DUMP
 from .sparsebev_sampling import sampling_4d, make_sample_points
@@ -451,15 +452,12 @@ class BEVSampling(BaseModule):
         self.ray_points_offset = nn.Linear(embed_dims, self.depth_num)
         self.sampling_offset = nn.Linear(embed_dims, depth_num * num_heads * num_points * 2)
         self.scale_weights = nn.Linear(embed_dims, num_heads * num_levels * depth_num * num_points)
-        
-        positional_encoding=dict(
-        type='LearnedPositionalEncoding',
-        num_feats=128,
-        row_num_embed=spatial_shapes[1],
-        col_num_embed=spatial_shapes[0])
-        
-        self.positional_encoding = build_positional_encoding(
-            positional_encoding)      
+
+        # Directly instantiate LearnedPositionalEncoding (mmcv 2.x compatibility)
+        self.positional_encoding = LearnedPositionalEncoding(
+            num_feats=128,
+            row_num_embed=spatial_shapes[1],
+            col_num_embed=spatial_shapes[0])      
         self.attention = BEVSelfAttention(embed_dims=embed_dims, num_heads=4, num_levels=1, num_points=num_points*self.depth_num, num_bev_queue=num_frames, queue_weight=True)
 
         self.temp_radar = temp_radar

@@ -1,13 +1,14 @@
 import os
 import mmcv
 import numpy as np
-from mmdet.datasets.builder import PIPELINES
+from mmengine.registry import TRANSFORMS as PIPELINES
 from numpy.linalg import inv
-from mmcv.runner import get_dist_info
-from mmcv.parallel import DataContainer as DC
+from mmengine.dist import get_dist_info
+from mmengine.structures import BaseDataElement as DC
 
 from loaders.nuscenes_dataset import get_nu_radar
-from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
+from mmdet.datasets.transforms import LoadAnnotations
+from mmcv.transforms import LoadImageFromFile
 
 import os, cv2, matplotlib.pyplot as plt
 import numpy as np 
@@ -38,7 +39,42 @@ def compose_lidar2img(ego2global_translation_curr,
     return lidar2img
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
+class LoadMultiViewImageFromFiles(object):
+    """Load multi channel images from a list of separate channel files.
+
+    Expects results['img_filename'] to be a list of filenames.
+    """
+    def __init__(self, to_float32=False, color_type='unchanged',
+                 file_client_args=dict(backend='disk'), num_views=6):
+        self.to_float32 = to_float32
+        self.color_type = color_type
+        self.file_client_args = file_client_args
+        self.num_views = num_views
+
+    def __call__(self, results):
+        filename = results['img_filename']
+        imgs = []
+        for name in filename:
+            img = mmcv.imread(name, self.color_type)
+            if self.to_float32:
+                img = img.astype(np.float32)
+            imgs.append(img)
+
+        results['img'] = imgs
+        results['filename'] = list(filename)  # Copy for downstream transforms
+        results['img_shape'] = [img.shape for img in imgs]
+        results['ori_shape'] = [img.shape for img in imgs]
+        results['pad_shape'] = [img.shape for img in imgs]
+        results['scale_factor'] = 1.0
+        results['img_norm_cfg'] = dict(
+            mean=np.zeros(3, dtype=np.float32),
+            std=np.ones(3, dtype=np.float32),
+            to_rgb=False)
+        return results
+
+
+@PIPELINES.register_module(force=True)
 class LoadMultiViewImageFromMultiSweepsFuture(object):
     def __init__(self,
                  prev_sweeps_num=5,
@@ -145,11 +181,11 @@ class LoadMultiViewImageFromMultiSweepsFuture(object):
 
         return results
 
-from mmdet3d.core.points import BasePoints, get_points_type
+from mmdet3d.structures.points import BasePoints, get_points_type
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class LoadPointsFromFile(object):
-    """Load Points From File.
+    """Load Points From File (Custom version - overrides mmdet3d's).
 
     Load points from file.
 
@@ -204,17 +240,13 @@ class LoadPointsFromFile(object):
         Returns:
             np.ndarray: An array containing point clouds data.
         """
-        if self.file_client is None:
-            self.file_client = mmcv.FileClient(**self.file_client_args)
-        try:
-            pts_bytes = self.file_client.get(pts_filename)
-            points = np.frombuffer(pts_bytes, dtype=np.float32)
-        except ConnectionError:
-            mmcv.check_file_exist(pts_filename)
-            if pts_filename.endswith('.npy'):
-                points = np.load(pts_filename)
-            else:
-                points = np.fromfile(pts_filename, dtype=np.float32)
+        # mmcv 2.x removed FileClient - use direct file loading
+        if not os.path.exists(pts_filename):
+            raise FileNotFoundError(f'Point cloud file not found: {pts_filename}')
+        if pts_filename.endswith('.npy'):
+            points = np.load(pts_filename)
+        else:
+            points = np.fromfile(pts_filename, dtype=np.float32)
 
         return points
 
@@ -272,7 +304,7 @@ class LoadPointsFromFile(object):
         repr_str += f'use_dim={self.use_dim})'
         return repr_str
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class LoadVoDPointsFromFile(object):
     """Load Points From File.
 
@@ -359,17 +391,13 @@ class LoadVoDPointsFromFile(object):
         Returns:
             np.ndarray: An array containing point clouds data.
         """
-        if self.file_client is None:
-            self.file_client = mmcv.FileClient(**self.file_client_args)
-        try:
-            pts_bytes = self.file_client.get(pts_filename)
-            points = np.frombuffer(pts_bytes, dtype=np.float32)
-        except ConnectionError:
-            mmcv.check_file_exist(pts_filename)
-            if pts_filename.endswith('.npy'):
-                points = np.load(pts_filename)
-            else:
-                points = np.fromfile(pts_filename, dtype=np.float32)
+        # mmcv 2.x removed FileClient - use direct file loading
+        if not os.path.exists(pts_filename):
+            raise FileNotFoundError(f'Point cloud file not found: {pts_filename}')
+        if pts_filename.endswith('.npy'):
+            points = np.load(pts_filename)
+        else:
+            points = np.fromfile(pts_filename, dtype=np.float32)
 
         return points
 
@@ -466,7 +494,7 @@ class LoadVoDPointsFromFile(object):
 import torch
 from pyquaternion import Quaternion
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class PointToMultiViewDepth(object):
 
     def __init__(self, grid_config, downsample=1):
@@ -519,7 +547,7 @@ class PointToMultiViewDepth(object):
         return results
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class RadarPointToMultiViewDepth(object):
     
     def __init__(self, grid_config, downsample=1, test_mode=False):
@@ -608,7 +636,7 @@ class RadarPointToMultiViewDepth(object):
         return self.load_offline(results)
         
     
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class LoadMultiViewImageFromMultiSweeps(object):
     def __init__(self,
                  sweeps_num=5,
@@ -745,7 +773,7 @@ class LoadMultiViewImageFromMultiSweeps(object):
         
         return self.load_offline(results)
     
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class Loadnuradarpoints(object):
     """Load radar Points From File.
 
@@ -825,7 +853,7 @@ class Loadnuradarpoints(object):
         repr_str += f'num_sweeps={self.num_sweeps}, '
         return repr_str
     
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class LoadradarpointsFromMultiSweeps(object):
     def __init__(self,
                  sweeps_num=5,
@@ -960,5 +988,63 @@ class LoadradarpointsFromMultiSweeps(object):
     def __call__(self, results):
         if self.sweeps_num == 0:
             return results
-        
+
         return self.load_offline(results)
+
+
+@PIPELINES.register_module(force=True)
+class Collect3D(object):
+    """Collect3D transform for collecting data and metadata.
+
+    This is a compatibility wrapper for the old mmdet3d Collect3D transform
+    which was replaced by Pack3DDetInputs in newer versions.
+
+    Args:
+        keys (list[str]): Keys of results to be collected in ``data``.
+        meta_keys (tuple[str], optional): Meta keys to be collected in
+            ``img_metas``. Defaults to common 3D detection meta keys.
+    """
+
+    def __init__(self,
+                 keys,
+                 meta_keys=('filename', 'ori_shape', 'img_shape', 'lidar2img',
+                            'depth2img', 'cam2img', 'pad_shape',
+                            'scale_factor', 'flip', 'pcd_horizontal_flip',
+                            'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
+                            'img_norm_cfg', 'pcd_trans', 'sample_idx',
+                            'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
+                            'transformation_3d_flow', 'scene_token',
+                            'timestamp', 'img_timestamp', 'intrinsics')):
+        self.keys = keys
+        self.meta_keys = meta_keys
+
+    def __call__(self, results):
+        """Call function to collect keys and meta keys.
+
+        Args:
+            results (dict): Result dict contains the data to collect.
+
+        Returns:
+            dict: The result dict with collected keys and img_metas.
+        """
+        data = {}
+        img_metas = {}
+
+        # Collect metadata
+        for key in self.meta_keys:
+            if key in results:
+                img_metas[key] = results[key]
+
+        data['img_metas'] = img_metas
+
+        # Collect data keys
+        for key in self.keys:
+            if key in results:
+                data[key] = results[key]
+
+        return data
+
+    def __repr__(self):
+        """str: Return a string that describes the module."""
+        return self.__class__.__name__ + \
+               f'(keys={self.keys}, meta_keys={self.meta_keys})'

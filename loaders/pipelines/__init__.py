@@ -1,5 +1,5 @@
-from .loading import LoadMultiViewImageFromMultiSweeps, LoadPointsFromFile, PointToMultiViewDepth, \
-    Loadnuradarpoints, LoadradarpointsFromMultiSweeps, RadarPointToMultiViewDepth
+from .loading import LoadMultiViewImageFromFiles, LoadMultiViewImageFromMultiSweeps, LoadPointsFromFile, PointToMultiViewDepth, \
+    Loadnuradarpoints, LoadradarpointsFromMultiSweeps, RadarPointToMultiViewDepth, Collect3D
 
 from .transforms import PadMultiViewImage, NormalizeMultiviewImage, PhotoMetricDistortionMultiViewImage, \
     RaCGlobalRotScaleTransImage
@@ -7,8 +7,8 @@ from .transforms import PadMultiViewImage, NormalizeMultiviewImage, PhotoMetricD
 from .formatng import RaCFormatBundle3D
 
 __all__ = [
-    'LoadMultiViewImageFromMultiSweeps', 'PadMultiViewImage', 'NormalizeMultiviewImage', 
+    'LoadMultiViewImageFromFiles', 'LoadMultiViewImageFromMultiSweeps', 'PadMultiViewImage', 'NormalizeMultiviewImage',
     'PhotoMetricDistortionMultiViewImage', 'LoadPointsFromFile', 'PointToMultiViewDepth',
     'RaCGlobalRotScaleTransImage', 'Loadnuradarpoints',
-    'LoadradarpointsFromMultiSweeps', 'RadarPointToMultiViewDepth', 'RaCFormatBundle3D',
+    'LoadradarpointsFromMultiSweeps', 'RadarPointToMultiViewDepth', 'RaCFormatBundle3D', 'Collect3D',
 ]

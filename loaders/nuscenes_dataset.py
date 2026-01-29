@@ -1,7 +1,8 @@
 import os
 import os.path as osp
 import numpy as np
-from mmdet.datasets import DATASETS
+import pickle
+from mmdet3d.registry import DATASETS
 from mmdet3d.datasets import NuScenesDataset
 from pyquaternion import Quaternion
 import torch
@@ -17,120 +18,368 @@ from functools import reduce
 import random
 
 
-nu_version = 'v1.0-trainval'
+nu_version = os.environ.get('NUSCENES_VERSION', 'v1.0-trainval')
 renusc = NuScenes(version=nu_version, dataroot=str('data/nuscenes/'), verbose=False)
 
 @DATASETS.register_module()
 class CustomNuScenesDataset(NuScenesDataset):
-    def __init__(self, 
+    # Default METAINFO with nuScenes classes - will be overridden by metainfo kwarg
+    METAINFO = {
+        'classes': (
+            'car', 'truck', 'trailer', 'bus', 'construction_vehicle',
+            'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
+        ),
+    }
+
+    def __init__(self,
                  camera_types=None,
                  radar_types=None,
                  max_samples=None,
+                 # Compatibility: old-style args that need to be converted for mmdet3d 1.4+
+                 classes=None,
+                 modality=None,
+                 box_type_3d=None,
+                 use_valid_flag=None,
                  **kwargs):
+        # Convert old-style 'classes' to new-style 'metainfo'
+        if classes is not None:
+            if 'metainfo' not in kwargs:
+                kwargs['metainfo'] = dict(classes=tuple(classes))
+            elif 'classes' not in kwargs['metainfo']:
+                kwargs['metainfo']['classes'] = tuple(classes)
+
+        # Store modality for later - we'll set it after super().__init__() which overwrites it
+        _modality = modality if modality is not None else dict(use_camera=True, use_lidar=True)
+
+        # Filter out deprecated arguments that shouldn't go to parent
+        kwargs.pop('modality', None)
+        kwargs.pop('box_type_3d', None)
+        kwargs.pop('use_valid_flag', None)
+        kwargs.pop('classes', None)  # Already converted to metainfo
+
+        # Store max_samples before super().__init__ (which calls full_init -> load_data_list)
+        self._max_samples = max_samples
+
+        # Use lazy_init to avoid Det3DDataset's problematic statistics code
+        # which accesses self.metainfo['classes'] before it's properly set
+        kwargs['lazy_init'] = True
+        # Disable serialization to keep data in _data_list directly
+        # This avoids pickle serialization issues with complex numpy arrays
+        kwargs['serialize_data'] = False
+
         super().__init__(**kwargs)
+
+        # Re-set modality AFTER super().__init__() because parent class overwrites it
+        self.modality = _modality
+        # mmdet3d 1.4+ Det3DDataset expects this attribute
+        self.show_ins_var = False
+
+        # Now manually complete initialization
+        self.full_init()
+
         self.camera_types = camera_types
         self.radar_types = radar_types
-        
-        if max_samples is not None:
-            self.data_infos = self.data_infos[:max_samples]
-            self.max_samples = max_samples
-        else:
-            self.max_samples = None
 
-    def evaluate(self, results, logger=None, front_only=False, **kwargs):
+        # Store for compatibility
+        self.CLASSES = classes
+        self.max_samples = max_samples
+
+    def load_data_list(self):
+        """Load annotations from an annotation file (old format compatibility).
+
+        The old mmdet3d format uses 'infos' key, while new mmengine format
+        uses 'data_list' and 'metainfo' keys.
+
+        Returns:
+            list[dict]: A list of annotation dicts.
+        """
+        with open(self.ann_file, 'rb') as f:
+            data = pickle.load(f)
+
+        # Handle old format (infos key)
+        if 'infos' in data:
+            data_list = data['infos']
+            if 'metadata' in data:
+                self._metainfo = data['metadata']
+        # Handle new format (data_list key)
+        elif 'data_list' in data:
+            data_list = data['data_list']
+            if 'metainfo' in data:
+                self._metainfo.update(data['metainfo'])
+        else:
+            raise ValueError('Annotation file must have "infos" or "data_list" key')
+
+        # Apply max_samples limit if set
+        if hasattr(self, '_max_samples') and self._max_samples is not None:
+            data_list = data_list[:self._max_samples]
+
+        # Store our own copy for backward compatibility (data_infos property)
+        self._custom_data_list = data_list
+        return data_list
+
+    @property
+    def data_infos(self):
+        """Property for backward compatibility - returns the internal data list."""
+        # Use our custom stored list first
+        if hasattr(self, '_custom_data_list') and self._custom_data_list is not None:
+            return self._custom_data_list
+        # Fallback to mmengine's internal storage
+        if hasattr(self, '_data_list') and self._data_list is not None:
+            return self._data_list
+        # Last resort: use the property
+        return self.data_list
+
+    def get_data_info(self, index):
+        """Get data info by index - override to use data_infos directly."""
+        return self._get_data_info_impl(index)
+
+    def _get_data_info_impl(self, index):
+        """Implementation of get_data_info using data_infos."""
+        info = self.data_infos[index]
+        sweeps_prev, sweeps_next = self.collect_sweeps(index)
+
+        ego2global_translation = info['ego2global_translation']
+        ego2global_rotation = info['ego2global_rotation']
+        lidar2ego_translation = info['lidar2ego_translation']
+        lidar2ego_rotation = info['lidar2ego_rotation']
+        ego2global_rotation_mat = Quaternion(ego2global_rotation).rotation_matrix
+        lidar2ego_rotation_mat = Quaternion(lidar2ego_rotation).rotation_matrix
+
+        input_dict = dict(
+            sample_idx=info['token'],
+            sweeps={'prev': sweeps_prev, 'next': sweeps_next},
+            pts_filename=info['lidar_path'],
+            timestamp=info['timestamp'] / 1e6,
+            ego2global_translation=ego2global_translation,
+            ego2global_rotation=ego2global_rotation_mat,
+            lidar2ego_translation=lidar2ego_translation,
+            lidar2ego_rotation=lidar2ego_rotation_mat,
+        )
+
+        if self.modality['use_camera']:
+            img_paths = []
+            img_timestamps = []
+            lidar2img_rts = []
+            cam_intrinsics = []
+            if self.camera_types is None:
+                # Default to all cameras if not specified
+                cams_to_use = info['cams'].items()
+            else:
+                cams_to_use = [(k, v) for k, v in info['cams'].items() if k in self.camera_types]
+
+            for _, cam_info in cams_to_use:
+
+                img_paths.append(os.path.relpath(cam_info['data_path']))
+                img_timestamps.append(cam_info['timestamp'] / 1e6)
+
+                # obtain lidar to image transformation matrix
+                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
+                lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
+
+                lidar2cam_rt = np.eye(4)
+                lidar2cam_rt[:3, :3] = lidar2cam_r.T
+                lidar2cam_rt[3, :3] = -lidar2cam_t
+
+                intrinsic = cam_info['cam_intrinsic']
+                viewpad = np.eye(4)
+                viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
+                lidar2img_rt = (viewpad @ lidar2cam_rt.T)
+                lidar2img_rts.append(lidar2img_rt)
+                cam_intrinsics.append(intrinsic)
+
+            input_dict.update(dict(
+                img_filename=img_paths,
+                img_timestamp=img_timestamps,
+                lidar2img=lidar2img_rts,
+                intrinsics=cam_intrinsics,
+            ))
+
+        if not self.test_mode:
+            annos = self.get_ann_info(index)
+            input_dict['ann_info'] = annos
+
+        return input_dict
+
+    def _to_numpy(self, tensor):
+        """Convert tensor to numpy, handling CUDA tensors."""
+        if tensor is None:
+            return None
+        if isinstance(tensor, np.ndarray):
+            return tensor
+        if hasattr(tensor, 'cpu'):
+            tensor = tensor.cpu()
+        if hasattr(tensor, 'detach'):
+            tensor = tensor.detach()
+        if hasattr(tensor, 'numpy'):
+            return tensor.numpy()
+        return np.array(tensor)
+
+    def evaluate(self, results, logger=None, front_only=False, jsonfile_prefix=None, **kwargs):
         """Evaluate detection results using NuScenes evaluation.
-        
+
         Args:
             results: Detection results
             logger: Logger for output
             front_only: If True, filter GT and predictions to front-only (x > 0).
-                       This is used for 3-camera subset evaluation.
-                       Default: False (full 360° evaluation).
-            **kwargs: Additional arguments passed to parent evaluate
-            
+            jsonfile_prefix: Prefix for output JSON files
+            **kwargs: Additional arguments
+
         Returns:
             dict: Evaluation metrics
         """
-        # Only apply front-only filtering if explicitly requested
-        if front_only:
-            # Define the custom load_gt for front-only evaluation
-            def custom_load_gt(nusc, eval_split, box_cls, verbose=False):
-                gt_boxes = original_load_gt(nusc, eval_split, box_cls, verbose)
-                
-                # Filter by sample tokens (for mini evaluation)
-                if self.max_samples is not None:
-                    valid_tokens = set([info['token'] for info in self.data_infos])
-                    new_boxes = EvalBoxes()
-                    for sample_token in gt_boxes.sample_tokens:
-                        if sample_token in valid_tokens:
-                            new_boxes.add_boxes(sample_token, gt_boxes[sample_token])
-                    gt_boxes = new_boxes
-                
-                # Filter by FOV (Front only, x > 0 in ego frame)
-                filtered_boxes = EvalBoxes()
-                for sample_token in gt_boxes.sample_tokens:
-                    sample = nusc.get('sample', sample_token)
-                    sd_record = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
-                    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
-                    
-                    boxes = gt_boxes[sample_token]
-                    valid_boxes = []
-                    for box in boxes:
-                        trans = np.array(box.translation) - np.array(pose_record['translation'])
-                        rot = Quaternion(pose_record['rotation']).inverse
-                        trans = rot.rotate(trans)
-                        
-                        if trans[0] > 0:
-                            valid_boxes.append(box)
-                    
-                    filtered_boxes.add_boxes(sample_token, valid_boxes)
-                
-                return filtered_boxes
+        import json
+        from nuscenes.eval.detection.config import config_factory
 
-            # Monkeypatch
-            import nuscenes.eval.detection.evaluate as eval_module
-            original_load_gt_func = eval_module.load_gt
-            eval_module.load_gt = custom_load_gt
-            
-            try:
-                # Filter predictions
-                import copy
-                results = copy.deepcopy(results)
-                print(f"Filtering predictions to Front-Only (Ego X > 0)...")
-                for i, res in enumerate(results):
-                    if 'pts_bbox' in res:
-                        res = res['pts_bbox']
-                    
-                    boxes_3d = res['boxes_3d']
-                    scores_3d = res['scores_3d']
-                    labels_3d = res['labels_3d']
-                    
-                    info = self.data_infos[i]
-                    lidar2ego_translation = info['lidar2ego_translation']
-                    lidar2ego_rotation = info['lidar2ego_rotation']
-                    
-                    centers = boxes_3d.center
-                    rot = Quaternion(lidar2ego_rotation).rotation_matrix
-                    centers_ego = centers @ rot.T + np.array(lidar2ego_translation)
-                    
-                    mask = centers_ego[:, 0] > 0
-                    
-                    res['boxes_3d'] = boxes_3d[mask]
-                    res['scores_3d'] = scores_3d[mask]
-                    res['labels_3d'] = labels_3d[mask]
-                    
-                    if 'pts_bbox' in results[i]:
-                        results[i]['pts_bbox'] = res
+        # Get class names
+        class_names = self.metainfo.get('classes', self.METAINFO['classes'])
+
+        # Convert results to NuScenes submission format
+        nusc_submissions = {'meta': {'use_camera': True, 'use_lidar': False,
+                                      'use_radar': True, 'use_map': False,
+                                      'use_external': False},
+                           'results': {}}
+
+        print(f"Converting {len(results)} results to NuScenes format...")
+        for i, res in enumerate(results):
+            if 'pts_bbox' in res:
+                res = res['pts_bbox']
+
+            info = self.data_infos[i]
+            sample_token = info['token']
+
+            boxes_3d = res['boxes_3d']
+            scores_3d = self._to_numpy(res['scores_3d'])
+            labels_3d = self._to_numpy(res['labels_3d'])
+
+            # Get box tensor (handles both LiDARInstance3DBoxes and raw tensors)
+            if hasattr(boxes_3d, 'tensor'):
+                box_tensor = self._to_numpy(boxes_3d.tensor)  # [N, 9] cx,cy,cz,l,w,h,rot,vx,vy
+            else:
+                box_tensor = self._to_numpy(boxes_3d)
+
+            num_boxes = len(box_tensor) if box_tensor is not None else 0
+
+            # Apply front-only filtering if requested
+            if front_only and num_boxes > 0:
+                lidar2ego_translation = np.array(info['lidar2ego_translation'])
+                lidar2ego_rotation = Quaternion(info['lidar2ego_rotation']).rotation_matrix
+                centers = box_tensor[:, :3]
+                centers_ego = centers @ lidar2ego_rotation.T + lidar2ego_translation
+                mask = centers_ego[:, 0] > 0
+                box_tensor = box_tensor[mask]
+                scores_3d = scores_3d[mask]
+                labels_3d = labels_3d[mask]
+                num_boxes = len(box_tensor)
+
+            # Convert to NuScenes format (global frame)
+            sample_results = []
+
+            if num_boxes > 0:
+                # Get transforms for lidar to global
+                lidar2ego = np.eye(4)
+                lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
+                lidar2ego[:3, 3] = np.array(info['lidar2ego_translation'])
+
+                ego2global = np.eye(4)
+                ego2global[:3, :3] = Quaternion(info['ego2global_rotation']).rotation_matrix
+                ego2global[:3, 3] = np.array(info['ego2global_translation'])
+
+                lidar2global = ego2global @ lidar2ego
+
+                for j in range(num_boxes):
+                    # Box format: cx, cy, cz, l, w, h, rot, [vx, vy]
+                    box = box_tensor[j]
+                    center = box[:3]
+                    dims = box[3:6]  # l, w, h
+                    yaw = float(box[6])
+
+                    # Transform center to global frame
+                    center_homo = np.array([center[0], center[1], center[2], 1.0])
+                    center_global = (lidar2global @ center_homo)[:3]
+
+                    # Compute global rotation (lidar yaw + ego rotation + global rotation)
+                    lidar_rot = Quaternion(axis=[0, 0, 1], angle=yaw)
+                    ego_rot = Quaternion(info['lidar2ego_rotation'])
+                    global_rot = Quaternion(info['ego2global_rotation'])
+                    final_rot = global_rot * ego_rot * lidar_rot
+
+                    # Get velocity if available (columns 7,8)
+                    if box.shape[0] >= 9:
+                        vel = np.array([box[7], box[8], 0.0])
+                        vel_global = lidar2global[:3, :3] @ vel
                     else:
-                        results[i] = res
+                        vel_global = np.array([0.0, 0.0, 0.0])
 
-                print(f"Starting front-only evaluation...")
-                return super().evaluate(results, logger=logger, **kwargs)
-            finally:
-                eval_module.load_gt = original_load_gt_func
-        else:
-            # Standard full 360° evaluation (original nuScenes protocol)
-            return super().evaluate(results, logger=logger, **kwargs)
+                    label_idx = int(labels_3d[j])
+                    if label_idx >= len(class_names):
+                        print(f"Warning: label {label_idx} >= num_classes {len(class_names)}, skipping")
+                        continue
+
+                    detection_name = class_names[label_idx]
+
+                    sample_results.append({
+                        'sample_token': sample_token,
+                        'translation': [float(center_global[0]), float(center_global[1]), float(center_global[2])],
+                        'size': [float(dims[1]), float(dims[0]), float(dims[2])],  # l,w,h -> w,l,h (nusc format)
+                        'rotation': [float(x) for x in final_rot.elements.tolist()],
+                        'velocity': [float(vel_global[0]), float(vel_global[1])],
+                        'detection_name': detection_name,
+                        'detection_score': float(scores_3d[j]),
+                        'attribute_name': ''
+                    })
+
+            nusc_submissions['results'][sample_token] = sample_results
+
+        # Write results to JSON
+        if jsonfile_prefix is None:
+            jsonfile_prefix = 'submission'
+        result_file = f'{jsonfile_prefix}_results.json'
+
+        print(f"Writing results to {result_file}...")
+        with open(result_file, 'w') as f:
+            json.dump(nusc_submissions, f)
+
+        # Run NuScenes evaluation
+        print("Running NuScenes evaluation...")
+        try:
+            eval_set = 'mini_val' if 'mini' in nu_version else 'val'
+            cfg = config_factory('detection_cvpr_2019')
+
+            nusc_eval = NuScenesEval(
+                renusc,
+                config=cfg,
+                result_path=result_file,
+                eval_set=eval_set,
+                output_dir='./eval_output',
+                verbose=True
+            )
+            metrics = nusc_eval.main(render_curves=False)
+
+            # Extract key metrics
+            result_dict = {
+                'mAP': float(metrics['mean_ap']),
+                'NDS': float(metrics['nd_score']),
+                'mATE': float(metrics['tp_errors']['trans_err']),
+                'mASE': float(metrics['tp_errors']['scale_err']),
+                'mAOE': float(metrics['tp_errors']['orient_err']),
+                'mAVE': float(metrics['tp_errors']['vel_err']),
+                'mAAE': float(metrics['tp_errors']['attr_err']),
+            }
+
+            print("\n" + "="*50)
+            print("NuScenes Detection Metrics:")
+            print("="*50)
+            for k, v in result_dict.items():
+                print(f"  {k}: {v:.4f}")
+            print("="*50 + "\n")
+
+            return result_dict
+
+        except Exception as e:
+            print(f"Evaluation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'error': str(e)}
 
 
 
@@ -157,7 +406,11 @@ class CustomNuScenesDataset(NuScenesDataset):
 
         return all_sweeps_prev, all_sweeps_next
 
+@DATASETS.register_module()
+class CustomNuScenesDataset_radar(CustomNuScenesDataset):
+
     def get_data_info(self, index):
+        """Override get_data_info to add scene_condition and use data_infos."""
         info = self.data_infos[index]
         sweeps_prev, sweeps_next = self.collect_sweeps(index)
 
@@ -165,8 +418,10 @@ class CustomNuScenesDataset(NuScenesDataset):
         ego2global_rotation = info['ego2global_rotation']
         lidar2ego_translation = info['lidar2ego_translation']
         lidar2ego_rotation = info['lidar2ego_rotation']
-        ego2global_rotation = Quaternion(ego2global_rotation).rotation_matrix
-        lidar2ego_rotation = Quaternion(lidar2ego_rotation).rotation_matrix
+        ego2global_rotation_mat = Quaternion(ego2global_rotation).rotation_matrix
+        lidar2ego_rotation_mat = Quaternion(lidar2ego_rotation).rotation_matrix
+
+        scene_condition = self._get_scene_condition(info['token'])
 
         input_dict = dict(
             sample_idx=info['token'],
@@ -174,9 +429,10 @@ class CustomNuScenesDataset(NuScenesDataset):
             pts_filename=info['lidar_path'],
             timestamp=info['timestamp'] / 1e6,
             ego2global_translation=ego2global_translation,
-            ego2global_rotation=ego2global_rotation,
+            ego2global_rotation=ego2global_rotation_mat,
             lidar2ego_translation=lidar2ego_translation,
-            lidar2ego_rotation=lidar2ego_rotation,
+            lidar2ego_rotation=lidar2ego_rotation_mat,
+            scene_condition=scene_condition,
         )
 
         if self.modality['use_camera']:
@@ -185,36 +441,33 @@ class CustomNuScenesDataset(NuScenesDataset):
             lidar2img_rts = []
             cam_intrinsics = []
             if self.camera_types is None:
-                # Default to all cameras if not specified
                 cams_to_use = info['cams'].items()
             else:
                 cams_to_use = [(k, v) for k, v in info['cams'].items() if k in self.camera_types]
 
             for _, cam_info in cams_to_use:
-
                 img_paths.append(os.path.relpath(cam_info['data_path']))
                 img_timestamps.append(cam_info['timestamp'] / 1e6)
 
-                # obtain lidar to image transformation matrix
                 lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
                 lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
 
                 lidar2cam_rt = np.eye(4)
                 lidar2cam_rt[:3, :3] = lidar2cam_r.T
                 lidar2cam_rt[3, :3] = -lidar2cam_t
-                
+
                 intrinsic = cam_info['cam_intrinsic']
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
                 lidar2img_rt = (viewpad @ lidar2cam_rt.T)
                 lidar2img_rts.append(lidar2img_rt)
-                cam_intrinsics.append(intrinsic)
+                cam_intrinsics.append(viewpad)
 
             input_dict.update(dict(
                 img_filename=img_paths,
                 img_timestamp=img_timestamps,
                 lidar2img=lidar2img_rts,
-                intrinsics=cam_intrinsics, #here
+                intrinsics=cam_intrinsics,
             ))
 
         if not self.test_mode:
@@ -222,9 +475,6 @@ class CustomNuScenesDataset(NuScenesDataset):
             input_dict['ann_info'] = annos
 
         return input_dict
-
-@DATASETS.register_module()
-class CustomNuScenesDataset_radar(CustomNuScenesDataset):
 
     def _get_scene_condition(self, sample_token):
         """
@@ -261,76 +511,6 @@ class CustomNuScenesDataset_radar(CustomNuScenesDataset):
         except Exception:
             # If we can't determine, default to 'day'
             return 'day'
-
-    def get_data_info(self, index):
-        info = self.data_infos[index]
-        sweeps_prev, sweeps_next = self.collect_sweeps(index)
-
-        ego2global_translation = info['ego2global_translation']
-        ego2global_rotation = info['ego2global_rotation']
-        lidar2ego_translation = info['lidar2ego_translation']
-        lidar2ego_rotation = info['lidar2ego_rotation']
-        ego2global_rotation = Quaternion(ego2global_rotation).rotation_matrix
-        lidar2ego_rotation = Quaternion(lidar2ego_rotation).rotation_matrix
-
-        scene_condition = self._get_scene_condition(info['token'])
-
-        input_dict = dict(
-            sample_idx=info['token'],
-            sweeps={'prev': sweeps_prev, 'next': sweeps_next},
-            pts_filename=info['lidar_path'],
-            timestamp=info['timestamp'] / 1e6,
-            ego2global_translation=ego2global_translation,
-            ego2global_rotation=ego2global_rotation,
-            lidar2ego_translation=lidar2ego_translation,
-            lidar2ego_rotation=lidar2ego_rotation,
-            scene_condition=scene_condition,
-        )
-
-        if self.modality['use_camera']:
-            img_paths = []
-            img_timestamps = []
-            lidar2img_rts = []
-            cam_intrinsics = []
-            if self.camera_types is None:
-                # Default to all cameras if not specified
-                cams_to_use = info['cams'].items()
-            else:
-                cams_to_use = [(k, v) for k, v in info['cams'].items() if k in self.camera_types]
-
-            for _, cam_info in cams_to_use:
-
-                img_paths.append(os.path.relpath(cam_info['data_path']))
-                img_timestamps.append(cam_info['timestamp'] / 1e6)
-
-                # obtain lidar to image transformation matrix
-                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
-                lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
-
-                lidar2cam_rt = np.eye(4)
-                lidar2cam_rt[:3, :3] = lidar2cam_r.T
-                lidar2cam_rt[3, :3] = -lidar2cam_t
-                
-                intrinsic = cam_info['cam_intrinsic']
-                viewpad = np.eye(4)
-                viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
-                lidar2img_rt = (viewpad @ lidar2cam_rt.T)
-                lidar2img_rts.append(lidar2img_rt)
-                cam_intrinsics.append(viewpad)
-
-            input_dict.update(dict(
-                img_filename=img_paths,
-                img_timestamp=img_timestamps,
-                lidar2img=lidar2img_rts,
-                intrinsics=cam_intrinsics, #here
-            ))
-
-
-        if not self.test_mode:
-            annos = self.get_ann_info(index)
-            input_dict['ann_info'] = annos
-
-        return input_dict
 
 
 drop=False

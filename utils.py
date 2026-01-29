@@ -5,9 +5,12 @@ import torch
 import shutil
 import logging
 import datetime
-from mmcv.runner.hooks import HOOKS
-from mmcv.runner.hooks.logger import LoggerHook, TextLoggerHook
-from mmcv.runner.dist_utils import master_only
+from mmengine.hooks import Hook, LoggerHook
+from mmengine.registry import HOOKS
+from mmengine.dist import master_only
+
+# Compatibility: TextLoggerHook removed in mmengine, alias to LoggerHook
+TextLoggerHook = LoggerHook
 from torch.utils.tensorboard import SummaryWriter
 
 

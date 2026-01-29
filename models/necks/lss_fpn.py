@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from mmcv.cnn import build_norm_layer
 
-from mmdet.models import NECKS
+from mmdet3d.registry import MODELS as NECKS
 
 
 @NECKS.register_module()

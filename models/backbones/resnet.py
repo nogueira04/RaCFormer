@@ -3,7 +3,7 @@
 import torch.utils.checkpoint as checkpoint
 from torch import nn
 
-from mmdet.models import BACKBONES
+from mmdet3d.registry import MODELS as BACKBONES
 from mmdet.models.backbones.resnet import BasicBlock, Bottleneck
 
 

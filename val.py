@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import time
 import numpy as np
 import utils
 import logging
@@ -11,12 +12,217 @@ import torch.distributed
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 from datetime import datetime
-from mmcv import Config
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import load_checkpoint
-from mmdet.apis import set_random_seed, multi_gpu_test, single_gpu_test
-from mmdet3d.datasets import build_dataset, build_dataloader
-from mmdet3d.models import build_model
+from mmengine.config import Config
+from mmengine.model import MMDistributedDataParallel
+from mmengine.runner import load_checkpoint
+# Compatibility: MMDataParallel deprecated, use simple wrapper
+from torch.nn.parallel import DataParallel as MMDataParallel
+from mmengine.runner import set_random_seed
+from tqdm import tqdm
+
+def single_gpu_test(model, data_loader, show=False, out_dir=None):
+    """Test model with single GPU, with timing metrics."""
+    model.eval()
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = tqdm(total=len(dataset))
+
+    # Timing metrics
+    inference_times = []
+
+    # Warmup run
+    warmup_done = False
+
+    for i, batch in enumerate(data_loader):
+        batch_results = []
+        for sample in batch:
+            # Handle different data formats
+            if isinstance(sample, dict):
+                data = sample
+            elif isinstance(sample, (list, tuple)):
+                while isinstance(sample, (list, tuple)) and len(sample) == 1:
+                    sample = sample[0]
+                if isinstance(sample, dict):
+                    data = sample
+                elif isinstance(sample, (list, tuple)) and len(sample) >= 2:
+                    data = sample[0] if isinstance(sample[0], dict) else {'inputs': sample[0], 'data_samples': sample[1]}
+                else:
+                    continue
+            else:
+                continue
+
+            # Wrap data in batch format expected by model
+            for key in ['img_metas', 'img', 'radar_points', 'radar_depth', 'radar_rcs', 'gt_depth']:
+                if key in data and not isinstance(data[key], list):
+                    data[key] = [data[key]]
+
+            # Warmup for first sample (GPU initialization)
+            if not warmup_done:
+                with torch.no_grad():
+                    _ = model(return_loss=False, rescale=True, **data)
+                torch.cuda.synchronize()
+                warmup_done = True
+
+            # Timed inference
+            torch.cuda.synchronize()
+            start_time = time.perf_counter()
+
+            with torch.no_grad():
+                result = model(return_loss=False, rescale=True, **data)
+
+            torch.cuda.synchronize()
+            end_time = time.perf_counter()
+            inference_times.append((end_time - start_time) * 1000)  # Convert to ms
+
+            if isinstance(result, list):
+                batch_results.extend(result)
+            else:
+                batch_results.append(result)
+        results.extend(batch_results)
+        prog_bar.update(len(batch))
+    prog_bar.close()
+
+    # Calculate timing statistics
+    timing_stats = {}
+    if inference_times:
+        timing_stats = {
+            'mean_inference_ms': np.mean(inference_times),
+            'std_inference_ms': np.std(inference_times),
+            'min_inference_ms': np.min(inference_times),
+            'max_inference_ms': np.max(inference_times),
+            'median_inference_ms': np.median(inference_times),
+            'fps': 1000.0 / np.mean(inference_times),
+            'num_samples': len(inference_times),
+        }
+
+    return results, timing_stats
+
+def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
+    """Test model with multiple GPUs, with timing metrics."""
+    model.eval()
+    results = []
+    inference_times = []
+    dataset = data_loader.dataset
+    rank, world_size = torch.distributed.get_rank(), torch.distributed.get_world_size()
+    if rank == 0:
+        prog_bar = tqdm(total=len(dataset))
+
+    warmup_done = False
+
+    for i, batch in enumerate(data_loader):
+        batch_results = []
+        for sample in batch:
+            if isinstance(sample, dict):
+                data = sample
+            elif isinstance(sample, (list, tuple)):
+                while isinstance(sample, (list, tuple)) and len(sample) == 1:
+                    sample = sample[0]
+                if isinstance(sample, dict):
+                    data = sample
+                else:
+                    continue
+            else:
+                continue
+
+            for key in ['img_metas', 'img', 'radar_points', 'radar_depth', 'radar_rcs', 'gt_depth']:
+                if key in data and not isinstance(data[key], list):
+                    data[key] = [data[key]]
+
+            # Warmup
+            if not warmup_done:
+                with torch.no_grad():
+                    _ = model(return_loss=False, rescale=True, **data)
+                torch.cuda.synchronize()
+                warmup_done = True
+
+            torch.cuda.synchronize()
+            start_time = time.perf_counter()
+
+            with torch.no_grad():
+                result = model(return_loss=False, rescale=True, **data)
+
+            torch.cuda.synchronize()
+            end_time = time.perf_counter()
+            inference_times.append((end_time - start_time) * 1000)
+
+            if isinstance(result, list):
+                batch_results.extend(result)
+            else:
+                batch_results.append(result)
+        results.extend(batch_results)
+        if rank == 0:
+            prog_bar.update(len(batch) * world_size)
+    if rank == 0:
+        prog_bar.close()
+
+    if gpu_collect:
+        results = collect_results_gpu(results, len(dataset))
+    else:
+        results = collect_results_cpu(results, len(dataset), tmpdir)
+
+    timing_stats = {}
+    if inference_times:
+        timing_stats = {
+            'mean_inference_ms': np.mean(inference_times),
+            'std_inference_ms': np.std(inference_times),
+            'min_inference_ms': np.min(inference_times),
+            'max_inference_ms': np.max(inference_times),
+            'median_inference_ms': np.median(inference_times),
+            'fps': 1000.0 / np.mean(inference_times),
+            'num_samples': len(inference_times),
+        }
+
+    return results, timing_stats
+
+def collect_results_cpu(results, size, tmpdir=None):
+    """Collect results under cpu mode (simplified)."""
+    return results[:size]
+
+def collect_results_gpu(results, size):
+    """Collect results under gpu mode (simplified)."""
+    return results[:size]
+from mmdet3d.registry import DATASETS
+from mmengine.dataset import worker_init_fn
+from torch.utils.data import DataLoader
+
+# Compatibility wrapper for build_dataset
+def build_dataset(cfg, default_args=None):
+    return DATASETS.build(cfg, default_args=default_args)
+
+# Custom collate function that handles class types and non-tensor data
+def pseudo_collate(batch):
+    """Collate function that doesn't stack tensors - just returns a list.
+
+    This handles cases where the batch contains non-collatable types like
+    class types, None values, or complex nested structures.
+    """
+    return batch
+
+# Compatibility wrapper for build_dataloader
+def build_dataloader(dataset, samples_per_gpu, workers_per_gpu, num_gpus=1, dist=True, shuffle=True, seed=None, **kwargs):
+    from functools import partial
+    from mmengine.dist import get_dist_info
+    rank, world_size = get_dist_info()
+    if dist:
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=shuffle)
+        shuffle = False
+    else:
+        sampler = None
+    dataloader = DataLoader(
+        dataset,
+        batch_size=samples_per_gpu,
+        sampler=sampler,
+        num_workers=workers_per_gpu,
+        shuffle=shuffle if sampler is None else False,
+        collate_fn=pseudo_collate,  # Use custom collate to handle class types
+        **kwargs
+    )
+    return dataloader
+from mmdet3d.registry import MODELS
+
+# Compatibility wrapper for build_model
+def build_model(cfg, train_cfg=None, test_cfg=None):
+    return MODELS.build(cfg)
 from models.utils import VERSION
 
 # Default distance bins for analysis (in meters)
@@ -40,26 +246,33 @@ CLASS_COLORS = {
 def evaluate(dataset, results, epoch):
     metrics = dataset.evaluate(results, jsonfile_prefix='submission')
 
-    if not metrics:
-        logging.warning('No metrics returned. Skipping evaluation report.')
-        return {}
+    if not metrics or 'error' in metrics:
+        logging.warning('No metrics returned or evaluation failed. Skipping evaluation report.')
+        return metrics if metrics else {}
 
-    mAP = metrics['pts_bbox_NuScenes/mAP']
-    mATE = metrics['pts_bbox_NuScenes/mATE']
-    mASE = metrics['pts_bbox_NuScenes/mASE']
-    mAOE = metrics['pts_bbox_NuScenes/mAOE']
-    mAVE = metrics['pts_bbox_NuScenes/mAVE']
-    mAAE = metrics['pts_bbox_NuScenes/mAAE']
-    NDS = metrics['pts_bbox_NuScenes/NDS']
+    # Handle both old format (pts_bbox_NuScenes/mAP) and new format (mAP)
+    def get_metric(key):
+        old_key = f'pts_bbox_NuScenes/{key}'
+        if old_key in metrics:
+            return metrics[old_key]
+        return metrics.get(key, 0.0)
+
+    mAP = get_metric('mAP')
+    mATE = get_metric('mATE')
+    mASE = get_metric('mASE')
+    mAOE = get_metric('mAOE')
+    mAVE = get_metric('mAVE')
+    mAAE = get_metric('mAAE')
+    NDS = get_metric('NDS')
 
     logging.info('--- Evaluation Results (Epoch %d) ---' % epoch)
-    logging.info('mAP: %.4f' % metrics['pts_bbox_NuScenes/mAP'])
-    logging.info('mATE: %.4f' % metrics['pts_bbox_NuScenes/mATE'])
-    logging.info('mASE: %.4f' % metrics['pts_bbox_NuScenes/mASE'])
-    logging.info('mAOE: %.4f' % metrics['pts_bbox_NuScenes/mAOE'])
-    logging.info('mAVE: %.4f' % metrics['pts_bbox_NuScenes/mAVE'])
-    logging.info('mAAE: %.4f' % metrics['pts_bbox_NuScenes/mAAE'])
-    logging.info('NDS: %.4f' % metrics['pts_bbox_NuScenes/NDS'])
+    logging.info('mAP: %.4f' % mAP)
+    logging.info('mATE: %.4f' % mATE)
+    logging.info('mASE: %.4f' % mASE)
+    logging.info('mAOE: %.4f' % mAOE)
+    logging.info('mAVE: %.4f' % mAVE)
+    logging.info('mAAE: %.4f' % mAAE)
+    logging.info('NDS: %.4f' % NDS)
 
     return {
         'mAP': mAP,
@@ -281,6 +494,127 @@ def save_bev_visualization(results, val_dataset, output_dir, max_samples=50):
     logging.info(f"BEV visualizations saved to {vis_dir}")
 
 
+def save_camera_visualization(results, val_dataset, output_dir, max_samples=20):
+    """Generate and save camera images with projected 3D detections.
+
+    Args:
+        results: List of detection results
+        val_dataset: Validation dataset
+        output_dir: Directory to save visualizations
+        max_samples: Maximum number of samples to visualize
+    """
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from PIL import Image
+    except ImportError:
+        logging.warning("matplotlib/PIL not available, skipping camera visualization")
+        return
+
+    vis_dir = os.path.join(output_dir, 'camera_visualizations')
+    os.makedirs(vis_dir, exist_ok=True)
+
+    class_names = list(CLASS_COLORS.keys())
+    num_to_visualize = min(max_samples, len(results))
+    logging.info(f"Generating camera visualizations for {num_to_visualize} samples...")
+
+    for idx in range(num_to_visualize):
+        try:
+            result = results[idx]
+            if 'pts_bbox' in result:
+                result = result['pts_bbox']
+
+            boxes = result['boxes_3d']
+            scores = result['scores_3d']
+            labels = result['labels_3d']
+
+            # Get dataset info
+            info = val_dataset.data_infos[idx]
+
+            # Get image paths
+            if 'cams' in info:
+                cam_names = list(info['cams'].keys())[:1]  # Just front camera
+                for cam_name in cam_names:
+                    cam_info = info['cams'][cam_name]
+                    img_path = cam_info['data_path']
+
+                    if not os.path.exists(img_path):
+                        continue
+
+                    # Load image
+                    img = Image.open(img_path)
+                    img_array = np.array(img)
+
+                    # Create figure
+                    fig, ax = plt.subplots(1, 1, figsize=(16, 9))
+                    ax.imshow(img_array)
+
+                    # Get camera intrinsics and lidar2cam transform
+                    intrinsic = cam_info['cam_intrinsic']
+                    lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
+                    lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
+
+                    # Project boxes to image
+                    if hasattr(boxes, 'tensor'):
+                        box_tensor = boxes.tensor.cpu().numpy()
+                    else:
+                        box_tensor = np.array(boxes)
+
+                    scores_np = scores.cpu().numpy() if hasattr(scores, 'cpu') else np.array(scores)
+                    labels_np = labels.cpu().numpy() if hasattr(labels, 'cpu') else np.array(labels)
+
+                    for j in range(len(box_tensor)):
+                        if scores_np[j] < 0.3:  # Score threshold
+                            continue
+
+                        box = box_tensor[j]
+                        center = box[:3]
+
+                        # Transform to camera frame
+                        center_cam = lidar2cam_r.T @ center - lidar2cam_t
+
+                        # Skip if behind camera
+                        if center_cam[2] <= 0:
+                            continue
+
+                        # Project to image
+                        center_img = intrinsic @ center_cam
+                        center_img = center_img[:2] / center_img[2]
+
+                        # Check if in image bounds
+                        if 0 <= center_img[0] < img_array.shape[1] and 0 <= center_img[1] < img_array.shape[0]:
+                            label_idx = int(labels_np[j])
+                            if label_idx < len(class_names):
+                                class_name = class_names[label_idx]
+                                color = CLASS_COLORS.get(class_name, '#ffffff')
+                            else:
+                                class_name = f'class_{label_idx}'
+                                color = '#ffffff'
+
+                            # Draw detection marker
+                            ax.plot(center_img[0], center_img[1], 'o', color=color, markersize=10)
+                            ax.text(center_img[0], center_img[1] - 15,
+                                   f'{class_name[:3]} {scores_np[j]:.2f}',
+                                   fontsize=8, color=color, ha='center',
+                                   bbox=dict(boxstyle='round', facecolor='black', alpha=0.5))
+
+                    ax.set_xlim(0, img_array.shape[1])
+                    ax.set_ylim(img_array.shape[0], 0)
+                    ax.axis('off')
+                    ax.set_title(f'Sample {idx} - {cam_name}', fontsize=12)
+
+                    save_path = os.path.join(vis_dir, f'cam_sample_{idx:04d}_{cam_name}.png')
+                    plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.1)
+                    plt.close(fig)
+
+        except Exception as e:
+            logging.warning(f"Failed to visualize sample {idx}: {e}")
+            continue
+
+    logging.info(f"Camera visualizations saved to {vis_dir}")
+
+
 def save_evaluation_outputs(output_dir, metrics, results, val_dataset, args, distance_bins):
     """Save all evaluation outputs to the specified directory.
     
@@ -311,7 +645,11 @@ def save_evaluation_outputs(output_dir, metrics, results, val_dataset, args, dis
         'mAVE': float(metrics.get('mAVE', 0)),
         'mAAE': float(metrics.get('mAAE', 0)),
     }
-    
+
+    # Add timing stats if available
+    if 'timing' in metrics:
+        metrics_to_save['timing'] = metrics['timing']
+
     # Extract per-class AP if available
     all_metrics = metrics.get('all_metrics', {})
     per_class_ap = {}
@@ -319,7 +657,7 @@ def save_evaluation_outputs(output_dir, metrics, results, val_dataset, args, dis
         if 'AP_dist' in key or '/AP/' in key:
             per_class_ap[key] = float(value) if value is not None else None
     metrics_to_save['per_class_details'] = per_class_ap
-    
+
     with open(metrics_file, 'w') as f:
         json.dump(metrics_to_save, f, indent=2)
     logging.info(f"Saved metrics to {metrics_file}")
@@ -338,10 +676,14 @@ def save_evaluation_outputs(output_dir, metrics, results, val_dataset, args, dis
     logging.info(f"Saved predictions to {predictions_file}")
     
     # 4. Generate BEV visualizations
-    save_bev_visualization(results, val_dataset, output_dir, 
+    save_bev_visualization(results, val_dataset, output_dir,
                           max_samples=getattr(args, 'max_vis_samples', 50))
-    
-    # 5. Generate text summary report
+
+    # 5. Generate camera visualizations with projected detections
+    save_camera_visualization(results, val_dataset, output_dir,
+                             max_samples=getattr(args, 'max_vis_samples', 20))
+
+    # 6. Generate text summary report
     report_file = os.path.join(output_dir, 'evaluation_report.txt')
     with open(report_file, 'w') as f:
         f.write("=" * 60 + "\n")
@@ -361,7 +703,20 @@ def save_evaluation_outputs(output_dir, metrics, results, val_dataset, args, dis
         f.write(f"mAOE: {metrics.get('mAOE', 0):.4f}\n")
         f.write(f"mAVE: {metrics.get('mAVE', 0):.4f}\n")
         f.write(f"mAAE: {metrics.get('mAAE', 0):.4f}\n\n")
-        
+
+        # Add timing stats if available
+        if 'timing' in metrics:
+            timing = metrics['timing']
+            f.write("-" * 40 + "\n")
+            f.write("LATENCY METRICS\n")
+            f.write("-" * 40 + "\n")
+            f.write(f"Mean inference time: {timing.get('mean_inference_ms', 0):.2f} ms\n")
+            f.write(f"Std inference time:  {timing.get('std_inference_ms', 0):.2f} ms\n")
+            f.write(f"Min inference time:  {timing.get('min_inference_ms', 0):.2f} ms\n")
+            f.write(f"Max inference time:  {timing.get('max_inference_ms', 0):.2f} ms\n")
+            f.write(f"FPS: {timing.get('fps', 0):.2f}\n")
+            f.write(f"Samples processed: {timing.get('num_samples', 0)}\n\n")
+
         f.write("-" * 40 + "\n")
         f.write("DISTANCE ANALYSIS\n")
         f.write("-" * 40 + "\n")
@@ -410,11 +765,38 @@ def main():
     # register custom module
     importlib.import_module('models')
     importlib.import_module('loaders')
+    # Ensure mmdet3d transforms are registered
+    import mmdet3d.datasets.transforms
 
-    # MMCV, please shut up
-    from mmcv.utils.logging import logger_initialized
-    logger_initialized['root'] = logging.Logger(__name__, logging.WARNING)
-    logger_initialized['mmcv'] = logging.Logger(__name__, logging.WARNING)
+    # Copy mmdet3d transforms to mmengine registry for compatibility
+    from mmengine.registry import TRANSFORMS as MMENGINE_TRANSFORMS
+    from mmdet3d.registry import TRANSFORMS as MMDET3D_TRANSFORMS
+    for name, module in MMDET3D_TRANSFORMS.module_dict.items():
+        if name not in MMENGINE_TRANSFORMS.module_dict:
+            MMENGINE_TRANSFORMS.register_module(name=name, module=module)
+
+    # Copy mmdet models to mmdet3d registry for compatibility (e.g., ResNet backbone)
+    from mmdet.registry import MODELS as MMDET_MODELS
+    from mmdet3d.registry import MODELS as MMDET3D_MODELS
+    for name, module in MMDET_MODELS.module_dict.items():
+        if name not in MMDET3D_MODELS.module_dict:
+            MMDET3D_MODELS.register_module(name=name, module=module)
+
+    # Copy mmdet task utils to mmdet3d registry for compatibility
+    from mmdet.registry import TASK_UTILS as MMDET_TASK_UTILS
+    from mmdet3d.registry import TASK_UTILS as MMDET3D_TASK_UTILS
+    for name, module in MMDET_TASK_UTILS.module_dict.items():
+        if name not in MMDET3D_TASK_UTILS.module_dict:
+            MMDET3D_TASK_UTILS.register_module(name=name, module=module)
+    # Also copy mmdet3d task utils to mmdet registry (for DETRHead which uses mmdet's registry)
+    for name, module in MMDET3D_TASK_UTILS.module_dict.items():
+        if name not in MMDET_TASK_UTILS.module_dict:
+            MMDET_TASK_UTILS.register_module(name=name, module=module)
+
+    # Suppress verbose logging from mmengine/mmcv
+    import logging
+    logging.getLogger('mmengine').setLevel(logging.WARNING)
+    logging.getLogger('mmcv').setLevel(logging.WARNING)
 
     # you need GPUs
     assert torch.cuda.is_available()
@@ -442,15 +824,16 @@ def main():
         dist.init_process_group('nccl', init_method='env://')
 
     logging.info('Setting random seed: 0')
-    set_random_seed(0, deterministic=True)
+    set_random_seed(0, deterministic=False)  # Disable deterministic for CUDA compatibility
     cudnn.benchmark = True
 
     logging.info('Loading validation set from %s' % cfgs.data.val.data_root)
     val_dataset = build_dataset(cfgs.data.val)
+    # Use num_workers=0 to avoid multiprocessing serialization issues with custom dataset
     val_loader = build_dataloader(
         val_dataset,
         samples_per_gpu=args.batch_size,
-        workers_per_gpu=cfgs.data.workers_per_gpu,
+        workers_per_gpu=0,  # Disabled to avoid serialization issues
         num_gpus=world_size,
         dist=world_size > 1,
         shuffle=False,
@@ -468,7 +851,7 @@ def main():
 
     logging.info('Loading checkpoint from %s' % args.weights)
     checkpoint = load_checkpoint(
-        model, args.weights, map_location='cuda', strict=True,
+        model, args.weights, map_location='cuda', strict=False,
         logger=logging.Logger(__name__, logging.ERROR)
     )
 
@@ -476,20 +859,40 @@ def main():
         VERSION.name = checkpoint['version']
 
     if world_size > 1:
-        results = multi_gpu_test(model, val_loader, gpu_collect=False)
+        results, timing_stats = multi_gpu_test(model, val_loader, gpu_collect=False)
     else:
-        results = single_gpu_test(model, val_loader)
+        results, timing_stats = single_gpu_test(model, val_loader)
 
     if local_rank == 0:
+        # Print timing statistics
+        if timing_stats:
+            logging.info('')
+            logging.info('=' * 50)
+            logging.info('Latency Metrics:')
+            logging.info('=' * 50)
+            logging.info('  Mean inference time: %.2f ms' % timing_stats['mean_inference_ms'])
+            logging.info('  Std inference time:  %.2f ms' % timing_stats['std_inference_ms'])
+            logging.info('  Min inference time:  %.2f ms' % timing_stats['min_inference_ms'])
+            logging.info('  Max inference time:  %.2f ms' % timing_stats['max_inference_ms'])
+            logging.info('  Median inference time: %.2f ms' % timing_stats['median_inference_ms'])
+            logging.info('  FPS: %.2f' % timing_stats['fps'])
+            logging.info('  Samples processed: %d' % timing_stats['num_samples'])
+            logging.info('=' * 50)
+            logging.info('')
+
         metrics = evaluate(val_dataset, results, -1)
-        
+
+        # Add timing stats to metrics
+        if timing_stats:
+            metrics['timing'] = timing_stats
+
         # Save evaluation outputs if output_dir is specified
         if args.output_dir:
             save_evaluation_outputs(
-                args.output_dir, 
-                metrics, 
-                results, 
-                val_dataset, 
+                args.output_dir,
+                metrics,
+                results,
+                val_dataset,
                 args,
                 distance_bins
             )

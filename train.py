@@ -7,9 +7,18 @@ import importlib
 import torch
 import torch.distributed as dist
 from datetime import datetime
-from mmcv.utils import Config, DictAction
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import EpochBasedRunner, build_optimizer, load_checkpoint
+from mmengine.config import Config, DictAction
+from mmengine.model import MMDistributedDataParallel
+from mmengine.runner import load_checkpoint
+from mmengine.optim import build_optim_wrapper
+from torch.nn.parallel import DataParallel as MMDataParallel
+
+# Compatibility wrapper for build_optimizer
+def build_optimizer(model, cfg):
+    return build_optim_wrapper(model, cfg)
+
+# Note: EpochBasedRunner replaced by mmengine.runner.Runner in mmengine
+# You may need to adapt your training loop
 from mmdet.apis import set_random_seed
 from mmdet.core import DistEvalHook, EvalHook
 from mmdet3d.datasets import build_dataset

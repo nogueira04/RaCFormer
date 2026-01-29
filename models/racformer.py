@@ -1,21 +1,54 @@
 import queue
 import torch
 import numpy as np
-from mmcv.runner import force_fp32, auto_fp16
-from mmcv.runner import get_dist_info
-from mmcv.runner.fp16_utils import cast_tensor_type
-from mmdet.models import DETECTORS
-from mmdet3d.core import bbox3d2result
+from mmengine.dist import get_dist_info
+# Compatibility: force_fp32/auto_fp16 deprecated in mmcv 2.x, using no-op decorators
+def force_fp32(apply_to=None, out_fp16=False):
+    def decorator(func):
+        return func
+    return decorator
+def auto_fp16(apply_to=None, out_fp32=False):
+    def decorator(func):
+        return func
+    return decorator
+def cast_tensor_type(inputs, src_type, dst_type):
+    return inputs
+from mmdet3d.structures import Det3DDataSample
 from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
 from .utils import GridMask, pad_multiple, GpuPhotoMetricDistortion
-from mmdet3d.models import builder
+from mmdet3d.registry import MODELS
+
+# Compatibility: builder module removed in mmdet3d 1.4+, use registry instead
+class builder:
+    @staticmethod
+    def build_neck(cfg):
+        return MODELS.build(cfg)
+    @staticmethod
+    def build_backbone(cfg):
+        return MODELS.build(cfg)
+    @staticmethod
+    def build_voxel_encoder(cfg):
+        return MODELS.build(cfg)
+    @staticmethod
+    def build_middle_encoder(cfg):
+        return MODELS.build(cfg)
+
+# Compatibility: bbox3d2result removed in mmdet3d 1.4+
+def bbox3d2result(bboxes, scores, labels, attrs=None):
+    result = dict(
+        boxes_3d=bboxes,
+        scores_3d=scores,
+        labels_3d=labels)
+    if attrs is not None:
+        result['attrs_3d'] = attrs
+    return result
 from torch.nn import functional as F
 from torch import nn as nn
 from mmcv.cnn import ConvModule
-from mmdet3d.ops import Voxelization
+from mmcv.ops import Voxelization
 
 
-@DETECTORS.register_module()
+@MODELS.register_module()
 class RaCFormer(MVXTwoStageDetector):
     def __init__(self,
                  data_aug=None,
@@ -43,11 +76,24 @@ class RaCFormer(MVXTwoStageDetector):
                  test_cfg=None,
                  pretrained=None,
                  num_cams=6):
-        super(RaCFormer, self).__init__(pts_voxel_layer, pts_voxel_encoder,
-                             pts_middle_encoder, pts_fusion_layer,
-                             img_backbone, pts_backbone, img_neck, pts_neck,
-                             pts_bbox_head, img_roi_head, img_rpn_head,
-                             train_cfg, test_cfg, pretrained)
+        # Updated for mmdet3d 1.4+ API - use keyword arguments
+        super(RaCFormer, self).__init__(
+            pts_voxel_encoder=pts_voxel_encoder,
+            pts_middle_encoder=pts_middle_encoder,
+            pts_fusion_layer=pts_fusion_layer,
+            img_backbone=img_backbone,
+            pts_backbone=pts_backbone,
+            img_neck=img_neck,
+            pts_neck=pts_neck,
+            pts_bbox_head=pts_bbox_head,
+            img_roi_head=img_roi_head,
+            img_rpn_head=img_rpn_head,
+            train_cfg=train_cfg,
+            test_cfg=test_cfg,
+        )
+        # Handle pts_voxel_layer separately (removed from parent class)
+        if pts_voxel_layer is not None:
+            self.pts_voxel_layer = Voxelization(**pts_voxel_layer)
         self.num_cams = num_cams
         self.data_aug = data_aug
         self.stop_prev_grad = stop_prev_grad
@@ -315,7 +361,7 @@ class RaCFormer(MVXTwoStageDetector):
                     img_meta_b.append(img_meta)
                 if self.training:
                     if i==0:
-                        pts_feats = self.extract_pts_feat(radar_points=radar_points[i])
+                        pts_feats = self.extract_pts_feat(radar_points=[radar_points[i]])
 
                         bev_feat, depth = self.img_lss_view_transformer(img_lss_feats[:, i*self.num_cams:(i+1)*self.num_cams], radar_depth[:, :, i], radar_rcs[:, :, i], img_meta_b, mlp_input[:,i*self.num_cams:(i+1)*self.num_cams])
                         if self.pre_process:
@@ -323,14 +369,14 @@ class RaCFormer(MVXTwoStageDetector):
                     else:
                         with torch.no_grad():
                             self.eval()   
-                            pts_feats = self.extract_pts_feat(radar_points=radar_points[i])
+                            pts_feats = self.extract_pts_feat(radar_points=[radar_points[i]])
 
                             bev_feat, depth = self.img_lss_view_transformer(img_lss_feats[:, i*self.num_cams:(i+1)*self.num_cams], radar_depth[:, :, i], radar_rcs[:, :, i], img_meta_b, mlp_input[:,i*self.num_cams:(i+1)*self.num_cams])
                             if self.pre_process:
                                 bev_feat = self.pre_process_net(bev_feat)[0]
                             self.train()   
                 else:
-                    pts_feats = self.extract_pts_feat(radar_points=radar_points[i])
+                    pts_feats = self.extract_pts_feat(radar_points=[radar_points[i]])
                     bev_feat, depth = self.img_lss_view_transformer(img_lss_feats[:, i*self.num_cams:(i+1)*self.num_cams], radar_depth[:, :, i], radar_rcs[:, :, i], img_meta_b, mlp_input[:,i*self.num_cams:(i+1)*self.num_cams])
                     if self.pre_process:
                         bev_feat = self.pre_process_net(bev_feat)[0]
@@ -463,9 +509,14 @@ class RaCFormer(MVXTwoStageDetector):
         return bbox_results
                     
     def simple_test(self, img_metas, img=None, rescale=False, radar_points=None, radar_depth=None, radar_rcs=None, **kwargs):
-        return self.simple_test_offline(img_metas, img, rescale, radar_points[0], radar_depth[0], radar_rcs[0])
+        # Don't index radar_points with [0] - extract_feat expects the full list of frames
+        # radar_depth and radar_rcs are tensors that need to be indexed
+        return self.simple_test_offline(img_metas, img, rescale, radar_points, radar_depth[0], radar_rcs[0])
 
     def simple_test_offline(self, img_metas, img=None, rescale=False, radar_points=None, radar_depth=None, radar_rcs=None):
+        # Wrap img_metas in list if it's a single dict (for batch compatibility)
+        if isinstance(img_metas, dict):
+            img_metas = [img_metas]
 
         img_feats, bev_feats, radar_bev_feats, _ = self.extract_feat(img=img, radar_points=radar_points, radar_depth=radar_depth, radar_rcs=radar_rcs, img_metas=img_metas)
 

@@ -1,29 +1,34 @@
 import numpy as np
-from mmdet.datasets.builder import PIPELINES
-from mmcv.parallel import DataContainer as DC
-from mmdet3d.datasets.pipelines.formating import DefaultFormatBundle3D
-from mmdet3d.core.points import BasePoints
-from mmdet.datasets.pipelines import to_tensor
-from mmdet3d.core.bbox import BaseInstance3DBoxes
+from mmengine.registry import TRANSFORMS as PIPELINES
+from mmdet3d.structures.points import BasePoints
+from mmdet3d.structures.bbox_3d import BaseInstance3DBoxes
 
-@PIPELINES.register_module()
-class RaCFormatBundle3D(DefaultFormatBundle3D):
-    """Default formatting bundle.
+# Compatibility wrapper for to_tensor
+def to_tensor(data):
+    import torch
+    if isinstance(data, np.ndarray):
+        return torch.from_numpy(data)
+    elif isinstance(data, torch.Tensor):
+        return data
+    elif isinstance(data, (list, tuple)):
+        return torch.tensor(data)
+    return data
 
-    It simplifies the pipeline of formatting common fields for voxels,
-    including "proposals", "gt_bboxes", "gt_labels", "gt_masks" and
-    "gt_semantic_seg".
-    These fields are formatted as follows.
+# Simple DataContainer replacement
+class DC:
+    def __init__(self, data, stack=True, cpu_only=False):
+        self.data = data
+        self.stack = stack
+        self.cpu_only = cpu_only
 
-    - img: (1)transpose, (2)to tensor, (3)to DataContainer (stack=True)
-    - proposals: (1)to tensor, (2)to DataContainer
-    - gt_bboxes: (1)to tensor, (2)to DataContainer
-    - gt_bboxes_ignore: (1)to tensor, (2)to DataContainer
-    - gt_labels: (1)to tensor, (2)to DataContainer
-    """
+@PIPELINES.register_module(force=True)
+class RaCFormatBundle3D:
+    """Custom formatting bundle for RaCFormer (standalone, not inheriting from Pack3DDetInputs)."""
 
     def __init__(self, class_names, with_gt=True, with_label=True):
-        super(RaCFormatBundle3D, self).__init__(class_names, with_gt=with_gt, with_label=with_label)
+        self.class_names = class_names
+        self.with_gt = with_gt
+        self.with_label = with_label
 
     def __call__(self, results):
         """Call function to transform and format common fields in results.
@@ -35,27 +40,48 @@ class RaCFormatBundle3D(DefaultFormatBundle3D):
             dict: The result dict contains the data that is formatted with
                 default bundle.
         """
-        # Format 3D data
+        import torch
+        # Convert images to tensor
+        # Model expects 5D: (batch, num_frames, C, H, W)
+        if 'img' in results:
+            if isinstance(results['img'], list):
+                # List of images - stack and convert
+                imgs = np.stack(results['img'], axis=0)  # (N, H, W, C)
+                # Transpose to (N, C, H, W) for PyTorch
+                imgs = imgs.transpose(0, 3, 1, 2)
+                # Add batch dimension: (1, N, C, H, W)
+                results['img'] = torch.from_numpy(imgs.copy()).float().unsqueeze(0)
+            elif isinstance(results['img'], np.ndarray):
+                img = results['img']
+                if img.ndim == 3:  # (H, W, C)
+                    img = img.transpose(2, 0, 1)  # (C, H, W)
+                    img = img[np.newaxis, np.newaxis, ...]  # (1, 1, C, H, W)
+                elif img.ndim == 4:  # (N, H, W, C)
+                    img = img.transpose(0, 3, 1, 2)  # (N, C, H, W)
+                    img = img[np.newaxis, ...]  # (1, N, C, H, W)
+                results['img'] = torch.from_numpy(img.copy()).float()
+
+        # Format 3D data - convert to raw tensors (no DC wrapper since we use pseudo_collate)
         if 'points' in results:
             assert isinstance(results['points'], BasePoints)
-            results['points'] = DC(results['points'].tensor)
-            
+            results['points'] = results['points'].tensor
+
         if 'radar_points' in results:
             if isinstance(results['radar_points'], list):
                 radar_list = []
                 for i in range(len(results['radar_points'])):
                     radar_points = results['radar_points'][i]
                     assert isinstance(radar_points, BasePoints)
-                    radar_list.append(DC(radar_points.tensor))
+                    radar_list.append(radar_points.tensor)
                 results['radar_points'] = radar_list
             else:
                 assert isinstance(results['radar_points'], BasePoints)
-                results['radar_points'] = DC(results['radar_points'].tensor)             
+                results['radar_points'] = results['radar_points'].tensor
 
         for key in ['voxels', 'coors', 'voxel_centers', 'num_points']:
             if key not in results:
                 continue
-            results[key] = DC(to_tensor(results[key]), stack=False)
+            results[key] = to_tensor(results[key])
 
         if self.with_gt:
             # Clean GT bboxes in the final
@@ -99,30 +125,26 @@ class RaCFormatBundle3D(DefaultFormatBundle3D):
                         self.class_names.index(n)
                         for n in results['gt_names_3d']
                     ], dtype=np.int64)
-        results = super(DefaultFormatBundle3D, self).__call__(results)
+        # Process results (standalone, no DC wrapper)
         for key in [
                 'gt_labels_static3d', 'gt_labels_dynamic3d'
         ]:
             if key not in results:
                 continue
             if isinstance(results[key], list):
-                results[key] = DC([to_tensor(res) for res in results[key]])
+                results[key] = [to_tensor(res) for res in results[key]]
             else:
-                results[key] = DC(to_tensor(results[key]))
+                results[key] = to_tensor(results[key])
         if 'gt_bboxes_static3d' in results:
             if isinstance(results['gt_bboxes_static3d'], BaseInstance3DBoxes):
-                results['gt_bboxes_static3d'] = DC(
-                    results['gt_bboxes_static3d'], cpu_only=True)
+                results['gt_bboxes_static3d'] = results['gt_bboxes_static3d']
             else:
-                results['gt_bboxes_static3d'] = DC(
-                    to_tensor(results['gt_bboxes_static3d']))
+                results['gt_bboxes_static3d'] = to_tensor(results['gt_bboxes_static3d'])
         if 'gt_bboxes_dynamic3d' in results:
             if isinstance(results['gt_bboxes_dynamic3d'], BaseInstance3DBoxes):
-                results['gt_bboxes_dynamic3d'] = DC(
-                    results['gt_bboxes_dynamic3d'], cpu_only=True)
+                results['gt_bboxes_dynamic3d'] = results['gt_bboxes_dynamic3d']
             else:
-                results['gt_bboxes_dynamic3d'] = DC(
-                    to_tensor(results['gt_bboxes_dynamic3d']))
+                results['gt_bboxes_dynamic3d'] = to_tensor(results['gt_bboxes_dynamic3d'])
         return results
 
     def __repr__(self):

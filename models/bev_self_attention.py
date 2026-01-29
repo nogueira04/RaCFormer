@@ -9,9 +9,9 @@ from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
 import warnings
 import torch
 import torch.nn as nn
-from mmcv.cnn import xavier_init
+from mmengine.model.weight_init import xavier_init
 
-from mmcv.runner.base_module import BaseModule
+from mmengine.model import BaseModule
 
 from mmcv.utils import ext_loader
 ext_module = ext_loader.load_ext(

@@ -1,12 +1,29 @@
 import math
 import torch
 import torch.nn as nn
-from mmcv.runner import force_fp32
-from mmdet.core import multi_apply, reduce_mean
-from mmdet.models import HEADS
+# Compatibility: force_fp32 deprecated in mmcv 2.x
+def force_fp32(apply_to=None, out_fp16=False):
+    def decorator(func):
+        return func
+    return decorator
+from mmengine.structures import InstanceData
+from mmdet.utils import reduce_mean
+from mmdet3d.registry import MODELS as HEADS
 from mmdet.models.dense_heads import DETRHead
-from mmdet3d.core.bbox.coders import build_bbox_coder
-from mmdet3d.core.bbox.structures.lidar_box3d import LiDARInstance3DBoxes
+from mmdet3d.registry import TASK_UTILS
+from mmdet3d.structures import LiDARInstance3DBoxes
+
+# Compatibility wrapper for build_bbox_coder
+def build_bbox_coder(cfg):
+    return TASK_UTILS.build(cfg)
+
+# Compatibility wrapper for multi_apply
+def multi_apply(func, *args, **kwargs):
+    pfunc = functools.partial(func, **kwargs) if kwargs else func
+    map_results = map(pfunc, *args)
+    return tuple(map(list, zip(*map_results)))
+
+import functools
 from .bbox.utils import normalize_bbox, encode_bbox, theta_d2xy_coods, xy2theta_d_coods
 from .utils import VERSION
 
@@ -16,6 +33,7 @@ class RaCFormer_head(DETRHead):
                  *args,
                  num_classes,
                  in_channels,
+                 num_query=900,
                  query_denoising=True,
                  query_denoising_groups=10,
                  num_clusters=5,
@@ -29,6 +47,7 @@ class RaCFormer_head(DETRHead):
         self.code_weights = code_weights
         self.num_classes = num_classes
         self.in_channels = in_channels
+        self.num_query = num_query
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.fp16_enabled = False
@@ -36,7 +55,18 @@ class RaCFormer_head(DETRHead):
 
         self.num_clusters = num_clusters
 
-        super(RaCFormer_head, self).__init__(num_classes, in_channels, train_cfg=train_cfg, test_cfg=test_cfg, **kwargs)
+        # Extract transformer config before filtering
+        transformer_cfg = kwargs.pop('transformer', None)
+        positional_encoding_cfg = kwargs.pop('positional_encoding', None)
+
+        # Filter out kwargs not accepted by DETRHead in newer mmdet versions
+        detr_kwargs = {k: v for k, v in kwargs.items() if k not in ['num_query', 'sync_cls_avg_factor']}
+        super(RaCFormer_head, self).__init__(num_classes, in_channels, train_cfg=train_cfg, test_cfg=test_cfg, **detr_kwargs)
+
+        # Build transformer from config
+        if transformer_cfg is not None:
+            from mmdet3d.registry import MODELS
+            self.transformer = MODELS.build(transformer_cfg)
 
         self.code_weights = nn.Parameter(torch.tensor(self.code_weights), requires_grad=False)
         self.bbox_coder = build_bbox_coder(bbox_coder)

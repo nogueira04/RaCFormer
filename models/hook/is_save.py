@@ -8,9 +8,10 @@ import pdb
 import shutil
 
 import torch
-from mmcv.runner import load_state_dict
-from mmcv.runner.dist_utils import master_only
-from mmcv.runner.hooks import HOOKS, Hook
+from mmengine.runner.checkpoint import load_state_dict
+from mmengine.dist import master_only
+from mmengine.hooks import Hook
+from mmengine.registry import HOOKS
 import torch.distributed as dist
 from .utils import is_parallel
 import mmcv

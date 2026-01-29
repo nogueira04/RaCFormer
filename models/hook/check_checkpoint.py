@@ -4,10 +4,10 @@ import torch
 import warnings
 from typing import Optional
 import io
-from mmcv.fileio import FileClient
-from mmcv.runner.dist_utils import allreduce_params, master_only
-# from mmcv.runner.hooks.hook import HOOKS, Hook
-from mmcv.runner.hooks import HOOKS, Hook
+from mmengine.fileio import FileClient
+from mmengine.dist import all_reduce_params as allreduce_params, master_only
+from mmengine.hooks import Hook
+from mmengine.registry import HOOKS
 
 __all__ = ['Check_CheckpointHook']
 

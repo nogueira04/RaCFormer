@@ -2,7 +2,12 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.runner import BaseModule, auto_fp16
+from mmengine.model import BaseModule
+# Compatibility: auto_fp16 deprecated in mmcv 2.x
+def auto_fp16(apply_to=None, out_fp32=False):
+    def decorator(func):
+        return func
+    return decorator
 
 def normalize_bbox(bboxes):
     cx = bboxes[..., 0:1]

@@ -3,11 +3,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import build_conv_layer, build_norm_layer
-from mmcv.runner import BaseModule, force_fp32
+from mmengine.model import BaseModule
+# Compatibility: force_fp32 deprecated in mmcv 2.x
+def force_fp32(apply_to=None, out_fp16=False):
+    def decorator(func):
+        return func
+    return decorator
 
 from models.csrc.bev_pool_v2.bev_pool import bev_pool_v2
 from mmdet.models.backbones.resnet import BasicBlock
-from mmdet.models.builder import NECKS
+from mmdet3d.registry import MODELS as NECKS
 
 from .focalloss import FocalLoss
 import numpy as np

@@ -1,9 +1,11 @@
 import torch
 
-from mmdet.core.bbox.builder import BBOX_ASSIGNERS
-from mmdet.core.bbox.assigners import AssignResult
-from mmdet.core.bbox.assigners import BaseAssigner
-from mmdet.core.bbox.match_costs import build_match_cost
+from mmdet3d.registry import TASK_UTILS as BBOX_ASSIGNERS
+from mmdet.models.task_modules.assigners import AssignResult, BaseAssigner
+
+# Compatibility wrapper
+def build_match_cost(cfg):
+    return BBOX_ASSIGNERS.build(cfg)
 from ..utils import normalize_bbox
 
 try:

@@ -1,9 +1,16 @@
 from functools import partial
 from mmcv.parallel import collate
-from mmcv.runner import get_dist_info
+from mmengine.dist import get_dist_info
 from torch.utils.data import DataLoader
-from mmdet.datasets.builder import worker_init_fn
-from mmdet.datasets.samplers import DistributedGroupSampler, DistributedSampler, GroupSampler
+from mmengine.dataset import worker_init_fn
+from mmdet.datasets.samplers import GroupSampler
+from torch.utils.data.distributed import DistributedSampler
+
+# Compatibility: DistributedGroupSampler may not exist, use DistributedSampler
+try:
+    from mmdet.datasets.samplers import DistributedGroupSampler
+except ImportError:
+    DistributedGroupSampler = DistributedSampler
 
 
 def build_dataloader(dataset,

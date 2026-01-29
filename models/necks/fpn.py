@@ -2,9 +2,14 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
-from mmcv.runner import BaseModule, auto_fp16
+from mmengine.model import BaseModule
+# Compatibility: auto_fp16 deprecated in mmcv 2.x
+def auto_fp16(apply_to=None, out_fp32=False):
+    def decorator(func):
+        return func
+    return decorator
 
-from mmdet.models.builder import NECKS
+from mmdet3d.registry import MODELS as NECKS
 
 
 @NECKS.register_module()

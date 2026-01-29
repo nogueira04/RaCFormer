@@ -1,5 +1,5 @@
-import torch
-pi = torch.pi
+import math
+pi = math.pi
 
 dataset_type = 'CustomNuScenesDataset_radar'
 dataset_root = './data/nuscenes/'

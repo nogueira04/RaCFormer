@@ -6,10 +6,10 @@ from os import path as osp
 import mmcv
 import numpy as np
 import torch
-from mmcv.utils import print_log
+from mmengine.logging import print_log
 
-from mmdet3d.core.bbox import Box3DMode, CameraInstance3DBoxes, points_cam2img
-from mmdet3d.datasets.builder import DATASETS
+from mmdet3d.structures import Box3DMode, CameraInstance3DBoxes, points_cam2img
+from mmdet3d.registry import DATASETS
 from mmdet3d.datasets.nuscenes_mono_dataset import NuScenesMonoDataset
 
 

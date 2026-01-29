@@ -3,11 +3,11 @@ import torch
 import numpy as np
 from PIL import Image
 from numpy import random
-from mmdet.datasets.builder import PIPELINES
+from mmengine.registry import TRANSFORMS as PIPELINES
 
 import numpy as np
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class PadMultiViewImage(object):
     """Pad the multi-view image.
     There are two padding modes: (1) pad to a fixed size and (2) pad to the
@@ -66,7 +66,7 @@ class PadMultiViewImage(object):
         return repr_str
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class NormalizeMultiviewImage(object):
     """Normalize the image.
     Added key is "img_norm_cfg".
@@ -114,7 +114,7 @@ class NormalizeMultiviewImage(object):
         return repr_str
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class PhotoMetricDistortionMultiViewImage:
     """Apply photometric distortion to image sequentially, every transformation
     is applied with a probability of 0.5. The position of random contrast is in
@@ -216,7 +216,7 @@ class PhotoMetricDistortionMultiViewImage:
         return repr_str
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class RandomTransformImage(object):
     def __init__(self, ida_aug_conf=None, training=True):
         self.ida_aug_conf = ida_aug_conf
@@ -342,7 +342,7 @@ class RandomTransformImage(object):
         return resize, resize_dims, crop, flip, rotate
 
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class GlobalRotScaleTransImage(object):
     def __init__(self,
                  rot_range=[-0.3925, 0.3925],
@@ -394,7 +394,7 @@ class GlobalRotScaleTransImage(object):
         for view in range(len(results['lidar2img'])):
             results['lidar2img'][view] = (torch.tensor(results['lidar2img'][view]).float() @ scale_mat_inv).numpy()
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class RaCGlobalRotScaleTransImage(object):
     def __init__(self,
                  rot_range=[-0.3925, 0.3925],
@@ -464,7 +464,7 @@ class RaCGlobalRotScaleTransImage(object):
                 results['radar_points'][i].scale(scale_ratio)
 
     
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class TransformDepthmap(object):
     """Normalize the image.
 

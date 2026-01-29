@@ -1,5 +1,5 @@
 import torch
-from mmdet.core.bbox.match_costs.builder import MATCH_COST
+from mmdet3d.registry import TASK_UTILS as MATCH_COST
 from models.bbox.utils import xy2theta_d_coods
 
 @MATCH_COST.register_module()
