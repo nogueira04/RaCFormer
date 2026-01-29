@@ -378,10 +378,10 @@ def save_bev_visualization(results, val_dataset, output_dir, max_samples=50):
     vis_dir = os.path.join(output_dir, 'bev_visualizations')
     os.makedirs(vis_dir, exist_ok=True)
     
-    # Class names for this dataset
+    # Class names must match the model's output order from config
     class_names = [
-        'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
-        'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
+        'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
+        'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
     ]
     
     num_to_visualize = min(max_samples, len(results))
@@ -494,8 +494,71 @@ def save_bev_visualization(results, val_dataset, output_dir, max_samples=50):
     logging.info(f"BEV visualizations saved to {vis_dir}")
 
 
+def get_3d_box_corners(center, dims, yaw):
+    """Get 8 corners of a 3D bounding box.
+
+    Args:
+        center: [x, y, z] center of box (z is at bottom/ground level)
+        dims: [l, w, h] dimensions (length, width, height)
+        yaw: rotation angle around z-axis
+
+    Returns:
+        corners: [8, 3] array of corner coordinates
+    """
+    l, w, h = dims[0], dims[1], dims[2]
+
+    # 3D box corners in object coordinate
+    # Center z is at bottom of box, so bottom corners at z=0, top at z=h
+    # Bottom 4 corners, then top 4 corners
+    x_corners = [l/2, l/2, -l/2, -l/2, l/2, l/2, -l/2, -l/2]
+    y_corners = [w/2, -w/2, -w/2, w/2, w/2, -w/2, -w/2, w/2]
+    z_corners = [0, 0, 0, 0, h, h, h, h]
+
+    corners = np.array([x_corners, y_corners, z_corners])  # [3, 8]
+
+    # Rotation matrix around z-axis
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+    rot_matrix = np.array([
+        [cos_yaw, -sin_yaw, 0],
+        [sin_yaw, cos_yaw, 0],
+        [0, 0, 1]
+    ])
+
+    # Rotate and translate
+    corners = rot_matrix @ corners  # [3, 8]
+    corners = corners.T + center  # [8, 3]
+
+    return corners
+
+
+def draw_3d_box(ax, corners_2d, color, linewidth=2):
+    """Draw a 3D bounding box on matplotlib axis.
+
+    Args:
+        ax: matplotlib axis
+        corners_2d: [8, 2] projected corner coordinates
+        color: box color
+        linewidth: line width
+    """
+    # Define the 12 edges of the box
+    # Bottom face: 0-1-2-3-0
+    # Top face: 4-5-6-7-4
+    # Vertical edges: 0-4, 1-5, 2-6, 3-7
+    edges = [
+        [0, 1], [1, 2], [2, 3], [3, 0],  # Bottom
+        [4, 5], [5, 6], [6, 7], [7, 4],  # Top
+        [0, 4], [1, 5], [2, 6], [3, 7]   # Vertical
+    ]
+
+    for edge in edges:
+        ax.plot([corners_2d[edge[0], 0], corners_2d[edge[1], 0]],
+                [corners_2d[edge[0], 1], corners_2d[edge[1], 1]],
+                color=color, linewidth=linewidth)
+
+
 def save_camera_visualization(results, val_dataset, output_dir, max_samples=20):
-    """Generate and save camera images with projected 3D detections.
+    """Generate and save camera images with projected 3D bounding boxes.
 
     Args:
         results: List of detection results
@@ -515,7 +578,11 @@ def save_camera_visualization(results, val_dataset, output_dir, max_samples=20):
     vis_dir = os.path.join(output_dir, 'camera_visualizations')
     os.makedirs(vis_dir, exist_ok=True)
 
-    class_names = list(CLASS_COLORS.keys())
+    # Class names must match the model's output order from config
+    class_names = [
+        'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
+        'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
+    ]
     num_to_visualize = min(max_samples, len(results))
     logging.info(f"Generating camera visualizations for {num_to_visualize} samples...")
 
@@ -545,15 +612,24 @@ def save_camera_visualization(results, val_dataset, output_dir, max_samples=20):
                     # Load image
                     img = Image.open(img_path)
                     img_array = np.array(img)
+                    img_h, img_w = img_array.shape[:2]
 
-                    # Create figure
-                    fig, ax = plt.subplots(1, 1, figsize=(16, 9))
+                    # Create figure with exact image dimensions
+                    dpi = 100
+                    fig, ax = plt.subplots(1, 1, figsize=(img_w/dpi, img_h/dpi), dpi=dpi)
+                    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
                     ax.imshow(img_array)
 
                     # Get camera intrinsics and lidar2cam transform
                     intrinsic = cam_info['cam_intrinsic']
-                    lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
-                    lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
+                    # sensor2lidar transforms FROM camera TO lidar
+                    # We need the inverse: lidar TO camera
+                    sensor2lidar_r = cam_info['sensor2lidar_rotation']
+                    sensor2lidar_t = cam_info['sensor2lidar_translation']
+
+                    # Inverse transform: p_cam = R.T @ (p_lidar - t)
+                    lidar2cam_r = sensor2lidar_r.T
+                    lidar2cam_t = -sensor2lidar_r.T @ sensor2lidar_t
 
                     # Project boxes to image
                     if hasattr(boxes, 'tensor'):
@@ -570,42 +646,63 @@ def save_camera_visualization(results, val_dataset, output_dir, max_samples=20):
 
                         box = box_tensor[j]
                         center = box[:3]
+                        dims = box[3:6]  # l, w, h
+                        yaw = box[6]
 
-                        # Transform to camera frame
-                        center_cam = lidar2cam_r.T @ center - lidar2cam_t
+                        # Get 3D box corners in lidar frame
+                        corners_3d = get_3d_box_corners(center, dims, yaw)  # [8, 3]
 
-                        # Skip if behind camera
-                        if center_cam[2] <= 0:
+                        # Transform corners to camera frame: p_cam = R @ p_lidar + t
+                        corners_cam = (lidar2cam_r @ corners_3d.T).T + lidar2cam_t  # [8, 3]
+
+                        # Skip if any corner is behind camera
+                        if np.any(corners_cam[:, 2] <= 0.1):
                             continue
 
-                        # Project to image
-                        center_img = intrinsic @ center_cam
-                        center_img = center_img[:2] / center_img[2]
+                        # Project corners to image
+                        corners_2d = (intrinsic @ corners_cam.T).T  # [8, 3]
+                        corners_2d = corners_2d[:, :2] / corners_2d[:, 2:3]  # [8, 2]
 
-                        # Check if in image bounds
-                        if 0 <= center_img[0] < img_array.shape[1] and 0 <= center_img[1] < img_array.shape[0]:
-                            label_idx = int(labels_np[j])
-                            if label_idx < len(class_names):
-                                class_name = class_names[label_idx]
-                                color = CLASS_COLORS.get(class_name, '#ffffff')
-                            else:
-                                class_name = f'class_{label_idx}'
-                                color = '#ffffff'
+                        # Check if box is mostly in image
+                        in_image = (corners_2d[:, 0] >= 0) & (corners_2d[:, 0] < img_w) & \
+                                   (corners_2d[:, 1] >= 0) & (corners_2d[:, 1] < img_h)
+                        if np.sum(in_image) < 2:
+                            continue
 
-                            # Draw detection marker
-                            ax.plot(center_img[0], center_img[1], 'o', color=color, markersize=10)
-                            ax.text(center_img[0], center_img[1] - 15,
-                                   f'{class_name[:3]} {scores_np[j]:.2f}',
-                                   fontsize=8, color=color, ha='center',
-                                   bbox=dict(boxstyle='round', facecolor='black', alpha=0.5))
+                        # Get class info
+                        label_idx = int(labels_np[j])
+                        if label_idx < len(class_names):
+                            class_name = class_names[label_idx]
+                            color = CLASS_COLORS.get(class_name, '#00ff00')
+                        else:
+                            class_name = f'cls{label_idx}'
+                            color = '#00ff00'
 
-                    ax.set_xlim(0, img_array.shape[1])
-                    ax.set_ylim(img_array.shape[0], 0)
+                        # Draw 3D bounding box
+                        draw_3d_box(ax, corners_2d, color, linewidth=2)
+
+                        # Add label at top-front corner
+                        label_x = np.mean(corners_2d[[4, 5], 0])
+                        label_y = np.min(corners_2d[[4, 5, 6, 7], 1]) - 5
+                        label_y = max(15, label_y)
+
+                        ax.text(label_x, label_y,
+                               f'{class_name} {scores_np[j]:.2f}',
+                               fontsize=9, color='white', ha='center', va='bottom',
+                               fontweight='bold',
+                               bbox=dict(boxstyle='round,pad=0.2', facecolor=color, alpha=0.7))
+
+                    ax.set_xlim(0, img_w)
+                    ax.set_ylim(img_h, 0)
                     ax.axis('off')
-                    ax.set_title(f'Sample {idx} - {cam_name}', fontsize=12)
+                    # Add title as text overlay instead of figure title
+                    ax.text(img_w/2, 25, f'Sample {idx} - {cam_name}',
+                           fontsize=14, color='white', ha='center', va='top',
+                           fontweight='bold',
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='black', alpha=0.6))
 
                     save_path = os.path.join(vis_dir, f'cam_sample_{idx:04d}_{cam_name}.png')
-                    plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.1)
+                    plt.savefig(save_path, dpi=dpi, pad_inches=0)
                     plt.close(fig)
 
         except Exception as e:

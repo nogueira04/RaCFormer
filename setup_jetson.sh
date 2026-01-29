@@ -55,7 +55,6 @@ sudo apt-get install -y libssl-dev
 
 pip install mmengine
 
-# Build mmcv 2.1.0 from source (takes 20-40 min on Orin AGX)
 # NOTE: Must use v2.1.0+ for PyTorch 2.3 compatibility (v2.0.0 fails to compile)
 # NOTE: Must use --no-build-isolation so mmcv can find torch during build
 # NOTE: Don't use -e (editable), it breaks __version__ attribute
