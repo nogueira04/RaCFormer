@@ -146,7 +146,7 @@ class CustomNuScenesDataset(NuScenesDataset):
                 original_func = eval_module.load_gt
                 eval_module.load_gt = filtered_load_gt
                 try:
-                    return super(type(self), self).evaluate(results, logger=logger, **kwargs)
+                    return NuScenesDataset.evaluate(self, results, logger=logger, **kwargs)
                 finally:
                     eval_module.load_gt = original_func
             else:
