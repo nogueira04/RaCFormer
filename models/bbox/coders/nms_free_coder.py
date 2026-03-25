@@ -16,6 +16,8 @@ class NMSFreeCoder(BaseBBoxCoder):
         score_threshold (float): Threshold to filter boxes based on score.
             Default: None.
         code_size (int): Code size of bboxes. Default: 9
+        nms_iou_threshold (float): IoU threshold for BEV NMS.
+            Default: None (no NMS applied).
     """
     def __init__(self,
                  pc_range,
@@ -23,13 +25,15 @@ class NMSFreeCoder(BaseBBoxCoder):
                  post_center_range=None,
                  max_num=100,
                  score_threshold=None,
-                 num_classes=10):
+                 num_classes=10,
+                 nms_iou_threshold=None):
         self.pc_range = pc_range
         self.voxel_size = voxel_size
         self.post_center_range = post_center_range
         self.max_num = max_num
         self.score_threshold = score_threshold
         self.num_classes = num_classes
+        self.nms_iou_threshold = nms_iou_threshold
 
     def encode(self):
         pass
@@ -73,6 +77,29 @@ class NMSFreeCoder(BaseBBoxCoder):
             boxes3d = final_box_preds[mask]
             scores = final_scores[mask]
             labels = final_preds[mask]
+
+            # Apply per-class BEV NMS if configured
+            if self.nms_iou_threshold is not None and len(scores) > 0:
+                from torchvision.ops import nms as tv_nms
+                keep_mask = torch.zeros(len(scores), dtype=torch.bool, device=scores.device)
+                for cls_id in labels.unique():
+                    cls_mask = labels == cls_id
+                    cls_boxes = boxes3d[cls_mask]
+                    cls_scores = scores[cls_mask]
+                    # denormalize_bbox output: [cx, cy, cz, w, l, h, rot, vx, vy]
+                    bev_boxes = torch.stack([
+                        cls_boxes[:, 0] - cls_boxes[:, 3] / 2,  # x1 = cx - w/2
+                        cls_boxes[:, 1] - cls_boxes[:, 4] / 2,  # y1 = cy - l/2
+                        cls_boxes[:, 0] + cls_boxes[:, 3] / 2,  # x2 = cx + w/2
+                        cls_boxes[:, 1] + cls_boxes[:, 4] / 2,  # y2 = cy + l/2
+                    ], dim=-1)
+                    nms_keep = tv_nms(bev_boxes, cls_scores, self.nms_iou_threshold)
+                    cls_indices = torch.where(cls_mask)[0]
+                    keep_mask[cls_indices[nms_keep]] = True
+                boxes3d = boxes3d[keep_mask]
+                scores = scores[keep_mask]
+                labels = labels[keep_mask]
+
             predictions_dict = {
                 'bboxes': boxes3d,
                 'scores': scores,
