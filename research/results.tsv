@@ -1,0 +1,13 @@
+iter	timestamp	hypothesis	mini_mAP	mini_NDS	full_mAP	full_NDS	night_mAP	status	description
+0	2026-03-25T00:06:16	baseline	0.4830	0.5453	0.5418	0.6144	0.3228	baseline	Published checkpoint on 300-sample mini set
+1	2026-03-25T00:27:35	bev_nms_iou05	0.4834	0.5454	-	-	-	discard	Per-class axis-aligned BEV NMS IoU=0.5 on NMSFreeCoder. Within noise of baseline.
+1b	2026-03-25T00:31:34	bev_nms_iou02	0.4794	0.5437	-	-	-	discard	Per-class BEV NMS IoU=0.2 (aggressive). mAP -0.36% vs baseline. NMS harmful for set-based DETR.
+2	2026-03-25T00:37:32	topk_500	0.4841	0.5453	-	-	-	discard	Increase max_num from 300 to 500. mAP +0.11% (noise). topk not a bottleneck.
+4	2026-03-25T00:55:00	radar_clocs_boost02_r3	0.4892	0.5316	-	-	-	screening	Radar-CLOCs: boost=0.2, radius=3m. mAP +0.63% but NDS -1.37%. Promoting to full val.
+4	2026-03-25T02:00:00	radar_clocs_full	0.4892	0.5316	0.5416	0.5995	-	discard	Radar-CLOCs boost=0.2 r=3: mini +0.63% but full -0.02% mAP, -1.49% NDS. Screening artifact.
+5a	2026-03-25T02:03:15	layer_ensemble_3	0.4812	0.5440	-	-	-	discard	Average logits over last 3 decoder layers. mAP -0.18%. Earlier layers dilute quality.
+5b	2026-03-25T02:05:58	layer_ensemble_6	0.4796	0.5432	-	-	-	discard	Average logits over all 6 decoder layers. mAP -0.34%. Worse with more layers.
+6a	2026-03-25T02:16:55	box_avg_3layers	0.4834	0.5454	-	-	-	discard	Avg boxes over last 3 decoder layers, last layer scores. Neutral.
+6b	2026-03-25T02:19:39	box_avg_2layers	0.4827	0.5453	-	-	-	discard	Avg boxes over last 2 decoder layers, last layer scores. Neutral.
+7	2026-03-25T02:26:15	static_velocity_zero	0.4829	0.5453	-	-	-	discard	Zero velocity for barrier+traffic_cone. Model already predicts ~0 for these. No effect.
+8	2026-03-25T02:47:53	clahe_enhancement	0.4829	0.5453	-	-	-	discard	CLAHE (clip=2.0) on all images before inference. Zero effect. ResNet features robust to contrast changes.
