@@ -11,3 +11,5 @@ iter	timestamp	hypothesis	mini_mAP	mini_NDS	full_mAP	full_NDS	night_mAP	status	d
 6b	2026-03-25T02:19:39	box_avg_2layers	0.4827	0.5453	-	-	-	discard	Avg boxes over last 2 decoder layers, last layer scores. Neutral.
 7	2026-03-25T02:26:15	static_velocity_zero	0.4829	0.5453	-	-	-	discard	Zero velocity for barrier+traffic_cone. Model already predicts ~0 for these. No effect.
 8	2026-03-25T02:47:53	clahe_enhancement	0.4829	0.5453	-	-	-	discard	CLAHE (clip=2.0) on all images before inference. Zero effect. ResNet features robust to contrast changes.
+9	2026-03-25T11:58:24+00:00	dino_classify_v1	0.4148	0.5110	-	-	-	discard	H9.1 DINOv3 reclassification (thresh=0.15, min_sim=0.3): 2617 reclass, mAP -6.82%. Mostly wrong reclassifications (car->traffic_cone). DINOv3 crop classification unreliable on small objects.
+10	2026-03-25T12:13:54+00:00	dino_fp_filter_sweep	0.4829	0.5453	-	-	-	discard	H9.2/H9.3 DINOv3 sweep: FP filter hurts (removes TPs), score fusion neutral. No strategy improves over baseline. DINOv3 crop features not useful for post-processing.
