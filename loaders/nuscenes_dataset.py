@@ -130,7 +130,27 @@ class CustomNuScenesDataset(NuScenesDataset):
                 eval_module.load_gt = original_load_gt_func
         else:
             # Standard full 360° evaluation (original nuScenes protocol)
-            return super().evaluate(results, logger=logger, **kwargs)
+            if self.max_samples is not None:
+                # Monkeypatch load_gt to filter GT to only the samples we evaluated
+                from nuscenes.eval.detection.data_classes import DetectionBoxes
+                valid_tokens = set([info['token'] for info in self.data_infos])
+                def filtered_load_gt(nusc, eval_split, box_cls, verbose=False):
+                    gt_boxes = original_load_gt(nusc, eval_split, box_cls, verbose)
+                    from nuscenes.eval.common.data_classes import EvalBoxes
+                    new_boxes = EvalBoxes()
+                    for sample_token in gt_boxes.sample_tokens:
+                        if sample_token in valid_tokens:
+                            new_boxes.add_boxes(sample_token, gt_boxes[sample_token])
+                    return new_boxes
+                import nuscenes.eval.detection.evaluate as eval_module
+                original_func = eval_module.load_gt
+                eval_module.load_gt = filtered_load_gt
+                try:
+                    return super(type(self), self).evaluate(results, logger=logger, **kwargs)
+                finally:
+                    eval_module.load_gt = original_func
+            else:
+                return super().evaluate(results, logger=logger, **kwargs)
 
 
 
