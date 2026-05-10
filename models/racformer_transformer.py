@@ -14,6 +14,7 @@ from .checkpoint import checkpoint as cp
 from .csrc.wrapper import MSMV_CUDA
 
 from .bev_self_attention import BEVSelfAttention
+from .efficient_attention import EfficientScaleAdaptiveSelfAttention
 
 @TRANSFORMER.register_module()
 class RaCFormerTransformer(BaseModule):
@@ -177,7 +178,7 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
             nn.ReLU(inplace=True),
         )
 
-        self.self_attn = ScaleAdaptiveSelfAttention(embed_dims, num_heads=8, dropout=0.1, pc_range=pc_range)
+        self.self_attn = EfficientScaleAdaptiveSelfAttention(embed_dims, num_heads=8, dropout=0.1, pc_range=pc_range)
         self.sampling = RaCFormerSampling(embed_dims, num_frames=num_frames, num_groups=4, num_points=num_points, num_levels=num_levels, depth_num=img_depth_num, pc_range=pc_range)
 
         # self.sampling_radar_bev = BEVSampling(embed_dims, num_frames=num_frames, num_heads=4, num_points=num_points_bev, num_levels=1, pc_range=pc_range, depth_num=bev_depth_num, spatial_shapes=spatial_shapes, temp_radar=False)
@@ -461,6 +462,7 @@ class BEVSampling(BaseModule):
         self.attention = BEVSelfAttention(embed_dims=embed_dims, num_heads=4, num_levels=1, num_points=num_points*self.depth_num, num_bev_queue=num_frames, queue_weight=True)
 
         self.temp_radar = temp_radar
+        self._cached_bev_pos = None
 
         if temp_radar:
             self.temporal_encoder = RadarBEVTemporalEncoder(embed_dims, 64, num_frames)
@@ -526,11 +528,15 @@ class BEVSampling(BaseModule):
         
         scale_weights = scale_weights.expand(B, Q, self.num_heads, self.num_frames, self.num_levels, self.depth_num*self.num_points).contiguous()
 
-        # sampling
-        bev_mask = torch.zeros((B, bev_h, bev_w),
-                               device=bev_feats.device).to(bev_feats.dtype)
-        bev_pos = self.positional_encoding(bev_mask).to(bev_feats.dtype)
-        bev_pos = bev_pos.view(B, 1, self.embed_dims, bev_h, bev_w).repeat(1,self.num_frames,1,1,1)
+        # sampling (cached positional encoding)
+        if (self._cached_bev_pos is None
+                or self._cached_bev_pos.device != bev_feats.device
+                or self._cached_bev_pos.dtype != bev_feats.dtype):
+            bev_mask = torch.zeros((1, bev_h, bev_w),
+                                   device=bev_feats.device).to(bev_feats.dtype)
+            self._cached_bev_pos = self.positional_encoding(bev_mask).to(bev_feats.dtype)
+            self._cached_bev_pos = self._cached_bev_pos.view(1, 1, self.embed_dims, bev_h, bev_w)
+        bev_pos = self._cached_bev_pos.expand(B, self.num_frames, -1, -1, -1)
         
         sampled_feats = self.attention(query_feat, bev_feats+bev_pos, sampling_points, scale_weights, spatial_shapes=(bev_h, bev_w))
 

@@ -143,14 +143,36 @@ class MSMVSamplingC23456(torch.autograd.Function):
 
 
 def msmv_sampling(mlvl_feats, sampling_locations, scale_weights):
+    """Multi-scale multi-view sampling with mixed precision support.
+
+    The custom CUDA kernels only support FP32, so we cast to FP32 for the
+    CUDA path and cast back to the original dtype afterward.
+    Supports both FP16 and BF16 from autocast.
+    """
+    # Check if inputs need casting (FP16 or BF16 from autocast)
+    input_dtype = mlvl_feats[0].dtype
+    needs_cast = input_dtype in (torch.float16, torch.bfloat16)
+
+    if needs_cast:
+        # Cast to FP32 for CUDA kernels
+        mlvl_feats = [f.float() for f in mlvl_feats]
+        sampling_locations = sampling_locations.float()
+        scale_weights = scale_weights.float()
+
     if len(mlvl_feats) == 2 and MSMV_CUDA:
-        return MSMVSamplingC45.apply(*mlvl_feats, sampling_locations, scale_weights)
-    if len(mlvl_feats) == 4 and MSMV_CUDA:
-        return MSMVSamplingC2345.apply(*mlvl_feats, sampling_locations, scale_weights)
+        result = MSMVSamplingC45.apply(*mlvl_feats, sampling_locations, scale_weights)
+    elif len(mlvl_feats) == 4 and MSMV_CUDA:
+        result = MSMVSamplingC2345.apply(*mlvl_feats, sampling_locations, scale_weights)
     elif len(mlvl_feats) == 5 and MSMV_CUDA:
-        return MSMVSamplingC23456.apply(*mlvl_feats, sampling_locations, scale_weights)
+        result = MSMVSamplingC23456.apply(*mlvl_feats, sampling_locations, scale_weights)
     else:
-        return msmv_sampling_pytorch(mlvl_feats, sampling_locations, scale_weights)
+        result = msmv_sampling_pytorch(mlvl_feats, sampling_locations, scale_weights)
+
+    # Cast back to original dtype if needed
+    if needs_cast:
+        result = result.to(input_dtype)
+
+    return result
 
 def msmv_sampling_v2(mlvl_feats, sampling_locations, scale_weights):
     return msmv_sampling_pytorch_v2(mlvl_feats, sampling_locations, scale_weights)

@@ -118,22 +118,9 @@ class LSSViewTransformer_racformer(BaseModule):
         """Calculate the locations of the frustum points in the lidar
         coordinate system.
 
-        Args:
-            rots (torch.Tensor): Rotation from camera coordinate system to
-                lidar coordinate system in shape (B, N_cams, 3, 3).
-            trans (torch.Tensor): Translation from camera coordinate system to
-                lidar coordinate system in shape (B, N_cams, 3).
-            cam2imgs (torch.Tensor): Camera intrinsic matrixes in shape
-                (B, N_cams, 3, 3).
-            post_rots (torch.Tensor): Rotation in camera coordinate system in
-                shape (B, N_cams, 3, 3). It is derived from the image view
-                augmentation.
-            post_trans (torch.Tensor): Translation in camera coordinate system
-                derived from image view augmentation in shape (B, N_cams, 3).
-
         Returns:
             torch.tensor: Point coordinates in shape
-                (B, N_cams, D, ownsample, 3)
+                (B, N_cams, D, H, W, 3)
         """
         eps = 1e-5
         B, N, C, H, W = img.shape
@@ -141,19 +128,16 @@ class LSSViewTransformer_racformer(BaseModule):
         coords = torch.cat((uvd, torch.ones_like(uvd[..., :1])), -1)
         coords[..., :2] = coords[..., :2] * torch.maximum(coords[..., 2:3], torch.ones_like(coords[..., 2:3])*eps)
 
-        img2lidars = []
-        for img_meta in img_metas:
-            img2lidar = []
-            for i in range(len(img_meta['lidar2img'])):
-                img2lidar.append(np.linalg.inv(img_meta['lidar2img'][i]))
-                # torch.linalg.inv
-            img2lidars.append(np.asarray(img2lidar))
-        img2lidars = np.asarray(img2lidars).astype(np.float32)
-        img2lidars = coords.new_tensor(img2lidars).to(img) # (B, N, 4, 4)
+        # Vectorized: stack lidar2img, invert on GPU, avoid numpy loops
+        lidar2img_list = [img_meta['lidar2img'] for img_meta in img_metas]
+        lidar2img = torch.as_tensor(
+            np.asarray(lidar2img_list), dtype=torch.float32, device=img.device
+        )  # [B, N, 4, 4]
+        img2lidars = torch.linalg.inv(lidar2img)  # [B, N, 4, 4]
 
-        # coords = coords.view(1, 1, W, H, self.D, 4, 1).repeat(B, N, 1, 1, 1, 1, 1)
-        coords = coords.view(1,1,self.D,H,W,4,1).repeat(B,N,1,1,1,1,1)
-        img2lidars = img2lidars.view(B, N, 1, 1, 1, 4, 4).repeat(1, 1, self.D, H, W, 1, 1)
+        # Use expand (no memory copy) instead of repeat for broadcasting
+        coords = coords.view(1, 1, self.D, H, W, 4, 1).expand(B, N, -1, -1, -1, -1, -1)
+        img2lidars = img2lidars.view(B, N, 1, 1, 1, 4, 4).expand(-1, -1, self.D, H, W, -1, -1)
         coords3d = torch.matmul(img2lidars, coords).squeeze(-1)[..., :3]
         return coords3d
     

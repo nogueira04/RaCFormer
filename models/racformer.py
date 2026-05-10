@@ -183,7 +183,7 @@ class RaCFormer(MVXTwoStageDetector):
             radar_points[i] = radar_point
 
         voxels, num_points, coors = self.radar_voxelize(radar_points)
-        radar_features = self.radar_voxel_encoder(voxels, num_points, coors).to(torch.float32) ## pillar feature
+        radar_features = self.radar_voxel_encoder(voxels, num_points, coors)  ## pillar feature
 
         batch_size = coors[-1, 0] + 1
 
@@ -232,10 +232,8 @@ class RaCFormer(MVXTwoStageDetector):
         N = self.num_cams 
         T = NT // N
         img = img.view(B * NT, C, H, W)
-        img = img.float()
 
         radar_depth = radar_depth.view(B * NT, 1, H, W)
-        radar_depth = radar_depth.float()
         
         radar_rcs = radar_rcs.view(B * NT, 1, H, W)
         radar_rcs = radar_rcs.view(B * NT, 1, H, W)

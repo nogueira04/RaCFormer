@@ -1,11 +1,12 @@
 import torch
 
 from mmdet3d.registry import TASK_UTILS as BBOX_ASSIGNERS
+from mmdet.registry import TASK_UTILS as MMDET_TASK_UTILS
 from mmdet.models.task_modules.assigners import AssignResult, BaseAssigner
 
-# Compatibility wrapper
+# Compatibility wrapper - use mmdet's registry as it has standard costs like FocalLossCost
 def build_match_cost(cfg):
-    return BBOX_ASSIGNERS.build(cfg)
+    return MMDET_TASK_UTILS.build(cfg)
 from ..utils import normalize_bbox
 
 try:
@@ -15,6 +16,7 @@ except ImportError:
 
 
 @BBOX_ASSIGNERS.register_module()
+@MMDET_TASK_UTILS.register_module()
 class PolarHungarianAssigner3D(BaseAssigner):
     def __init__(self,
                  cls_cost=dict(type='ClassificationCost', weight=1.0),

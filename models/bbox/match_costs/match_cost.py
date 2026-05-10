@@ -1,8 +1,10 @@
 import torch
 from mmdet3d.registry import TASK_UTILS as MATCH_COST
+from mmdet.registry import TASK_UTILS as MMDET_TASK_UTILS
 from models.bbox.utils import xy2theta_d_coods
 
 @MATCH_COST.register_module()
+@MMDET_TASK_UTILS.register_module()
 class BBox3DL1Cost(object):
     """BBox3DL1Cost.
      Args:
@@ -27,6 +29,7 @@ class BBox3DL1Cost(object):
         return bbox_cost * self.weight
 
 @MATCH_COST.register_module()
+@MMDET_TASK_UTILS.register_module()
 class ThetaL1Cost(object):
     """BBox3DL1Cost.
      Args:
@@ -64,6 +67,7 @@ class ThetaL1Cost(object):
         return theta_cost * self.weight
     
 @MATCH_COST.register_module()
+@MMDET_TASK_UTILS.register_module()
 class BBoxBEVL1Cost(object):
     def __init__(self, weight, pc_range):
         self.weight = weight
@@ -80,6 +84,7 @@ class BBoxBEVL1Cost(object):
 
 
 @MATCH_COST.register_module()
+@MMDET_TASK_UTILS.register_module()
 class IoU3DCost(object):
     def __init__(self, weight):
         self.weight = weight

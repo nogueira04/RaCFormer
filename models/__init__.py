@@ -1,13 +1,18 @@
-from .backbones import __all__
-from .bbox import __all__
-from .necks import __all__
-from .hook import __all__
-from .model_utils import __all__
+from . import backbones
+from . import bbox
+from . import necks
+from . import hook
+from . import model_utils
 
 from .racformer import RaCFormer
 from .racformer_head import RaCFormer_head
 from .racformer_transformer import RaCFormerTransformer
+from .efficient_attention import (
+    EfficientScaleAdaptiveSelfAttention,
+    SDPAMultiheadAttention,
+)
 
 __all__ = [
-    'RaCFormer', 'RaCFormer_head', 'RaCFormerTransformer'
-    ]
+    'RaCFormer', 'RaCFormer_head', 'RaCFormerTransformer',
+    'EfficientScaleAdaptiveSelfAttention', 'SDPAMultiheadAttention',
+]

@@ -50,7 +50,7 @@ class RaCFormatBundle3D:
                 # Transpose to (N, C, H, W) for PyTorch
                 imgs = imgs.transpose(0, 3, 1, 2)
                 # Add batch dimension: (1, N, C, H, W)
-                results['img'] = torch.from_numpy(imgs.copy()).float().unsqueeze(0)
+                results['img'] = torch.from_numpy(np.ascontiguousarray(imgs)).float().unsqueeze(0)
             elif isinstance(results['img'], np.ndarray):
                 img = results['img']
                 if img.ndim == 3:  # (H, W, C)
@@ -59,7 +59,7 @@ class RaCFormatBundle3D:
                 elif img.ndim == 4:  # (N, H, W, C)
                     img = img.transpose(0, 3, 1, 2)  # (N, C, H, W)
                     img = img[np.newaxis, ...]  # (1, N, C, H, W)
-                results['img'] = torch.from_numpy(img.copy()).float()
+                results['img'] = torch.from_numpy(np.ascontiguousarray(img)).float()
 
         # Format 3D data - convert to raw tensors (no DC wrapper since we use pseudo_collate)
         if 'points' in results:

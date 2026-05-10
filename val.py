@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import pickle
 import time
@@ -848,6 +849,8 @@ def main():
                         help='Comma-separated distance bins in meters, e.g., "0,20,40,60,80"')
     parser.add_argument('--max_vis_samples', type=int, default=50,
                         help='Maximum number of samples to visualize in BEV')
+    parser.add_argument('--trt-backbone', type=str, default=None,
+                        help='Path to TensorRT engine for backbone+FPN (Tier 2.1)')
     args = parser.parse_args()
 
     # Parse distance bins
@@ -954,6 +957,18 @@ def main():
 
     if 'version' in checkpoint:
         VERSION.name = checkpoint['version']
+
+    # Tier 2.1: TensorRT backbone+FPN
+    if args.trt_backbone:
+        if not os.path.exists(args.trt_backbone):
+            logging.error(f"TRT engine not found: {args.trt_backbone}")
+            sys.exit(1)
+        from export_tensorrt import TRTBackboneNeck, patch_extract_img_feat
+        trt_engine = TRTBackboneNeck(args.trt_backbone, device=f'cuda:{local_rank}')
+        # Patch the inner model (unwrap DataParallel)
+        inner_model = model.module if hasattr(model, 'module') else model
+        patch_extract_img_feat(inner_model, trt_engine)
+        logging.info(f"Using TensorRT backbone+FPN: {args.trt_backbone}")
 
     if world_size > 1:
         results, timing_stats = multi_gpu_test(model, val_loader, gpu_collect=False)
