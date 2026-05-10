@@ -201,15 +201,17 @@ class CustomNuScenesDataset(NuScenesDataset):
         return input_dict
 
     def _to_numpy(self, tensor):
-        """Convert tensor to numpy, handling CUDA tensors."""
+        """Convert tensor to numpy, handling CUDA and low-precision tensors."""
         if tensor is None:
             return None
         if isinstance(tensor, np.ndarray):
             return tensor
-        if hasattr(tensor, 'cpu'):
-            tensor = tensor.cpu()
         if hasattr(tensor, 'detach'):
             tensor = tensor.detach()
+        if hasattr(tensor, 'is_floating_point') and tensor.is_floating_point():
+            tensor = tensor.float()
+        if hasattr(tensor, 'cpu'):
+            tensor = tensor.cpu()
         if hasattr(tensor, 'numpy'):
             return tensor.numpy()
         return np.array(tensor)

@@ -7,6 +7,8 @@ import numpy as np
 import utils
 import logging
 import argparse
+import contextlib
+import copy
 import importlib
 import torch
 import torch.distributed
@@ -21,7 +23,31 @@ from torch.nn.parallel import DataParallel as MMDataParallel
 from mmengine.runner import set_random_seed
 from tqdm import tqdm
 
-def single_gpu_test(model, data_loader, show=False, out_dir=None):
+
+def move_to_device(data, device, non_blocking=True):
+    """Move validation tensors to CUDA for direct single-GPU inference."""
+    for key in ['img', 'radar_depth', 'radar_rcs', 'gt_depth']:
+        if key in data:
+            if isinstance(data[key], list):
+                data[key] = [d.to(device, dtype=torch.float32, non_blocking=non_blocking) if isinstance(d, torch.Tensor) else d for d in data[key]]
+            elif isinstance(data[key], torch.Tensor):
+                data[key] = data[key].to(device, dtype=torch.float32, non_blocking=non_blocking)
+    if 'radar_points' in data:
+        if isinstance(data['radar_points'], list):
+            new_pts = []
+            for pts in data['radar_points']:
+                if isinstance(pts, list):
+                    new_pts.append([p.to(device, dtype=torch.float32, non_blocking=non_blocking) if isinstance(p, torch.Tensor) else p for p in pts])
+                elif isinstance(pts, torch.Tensor):
+                    new_pts.append(pts.to(device, dtype=torch.float32, non_blocking=non_blocking))
+                else:
+                    new_pts.append(pts)
+            data['radar_points'] = new_pts
+        elif isinstance(data['radar_points'], torch.Tensor):
+            data['radar_points'] = data['radar_points'].to(device, dtype=torch.float32, non_blocking=non_blocking)
+    return data
+
+def single_gpu_test(model, data_loader, show=False, out_dir=None, autocast_dtype=None):
     """Test model with single GPU, with timing metrics."""
     model.eval()
     results = []
@@ -57,10 +83,15 @@ def single_gpu_test(model, data_loader, show=False, out_dir=None):
                 if key in data and not isinstance(data[key], list):
                     data[key] = [data[key]]
 
+            device = next((model.module if hasattr(model, 'module') else model).parameters()).device
+            data = move_to_device(data, device)
+
             # Warmup for first sample (GPU initialization)
             if not warmup_done:
+                warmup_data = copy.deepcopy(data)
                 with torch.no_grad():
-                    _ = model(return_loss=False, rescale=True, **data)
+                    with torch.cuda.amp.autocast(dtype=autocast_dtype) if autocast_dtype else contextlib.nullcontext():
+                        _ = model(return_loss=False, rescale=True, **warmup_data)
                 torch.cuda.synchronize()
                 warmup_done = True
 
@@ -69,7 +100,8 @@ def single_gpu_test(model, data_loader, show=False, out_dir=None):
             start_time = time.perf_counter()
 
             with torch.no_grad():
-                result = model(return_loss=False, rescale=True, **data)
+                with torch.cuda.amp.autocast(dtype=autocast_dtype) if autocast_dtype else contextlib.nullcontext():
+                    result = model(return_loss=False, rescale=True, **data)
 
             torch.cuda.synchronize()
             end_time = time.perf_counter()
@@ -98,7 +130,7 @@ def single_gpu_test(model, data_loader, show=False, out_dir=None):
 
     return results, timing_stats
 
-def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
+def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False, autocast_dtype=None):
     """Test model with multiple GPUs, with timing metrics."""
     model.eval()
     results = []
@@ -132,7 +164,8 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
             # Warmup
             if not warmup_done:
                 with torch.no_grad():
-                    _ = model(return_loss=False, rescale=True, **data)
+                    with torch.cuda.amp.autocast(dtype=autocast_dtype) if autocast_dtype else contextlib.nullcontext():
+                        _ = model(return_loss=False, rescale=True, **data)
                 torch.cuda.synchronize()
                 warmup_done = True
 
@@ -140,7 +173,8 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
             start_time = time.perf_counter()
 
             with torch.no_grad():
-                result = model(return_loss=False, rescale=True, **data)
+                with torch.cuda.amp.autocast(dtype=autocast_dtype) if autocast_dtype else contextlib.nullcontext():
+                    result = model(return_loss=False, rescale=True, **data)
 
             torch.cuda.synchronize()
             end_time = time.perf_counter()
@@ -339,7 +373,7 @@ def analyze_by_distance(results, val_dataset, distance_bins):
             continue
             
         distances = compute_distance(boxes)
-        scores_np = scores.cpu().numpy() if torch.is_tensor(scores) else np.array(scores)
+        scores_np = scores.detach().float().cpu().numpy() if torch.is_tensor(scores) else np.array(scores)
         
         for dist, score in zip(distances, scores_np):
             bin_idx = np.searchsorted(distance_bins, dist, side='right') - 1
@@ -851,6 +885,10 @@ def main():
                         help='Maximum number of samples to visualize in BEV')
     parser.add_argument('--trt-backbone', type=str, default=None,
                         help='Path to TensorRT engine for backbone+FPN (Tier 2.1)')
+    parser.add_argument('--fp16', action='store_true',
+                        help='Run validation inference under FP16 autocast')
+    parser.add_argument('--bf16', action='store_true',
+                        help='Run validation inference under BF16 autocast')
     args = parser.parse_args()
 
     # Parse distance bins
@@ -946,8 +984,6 @@ def main():
 
     if world_size > 1:
         model = MMDistributedDataParallel(model, [local_rank], broadcast_buffers=False)
-    else:
-        model = MMDataParallel(model, [0])
 
     logging.info('Loading checkpoint from %s' % args.weights)
     checkpoint = load_checkpoint(
@@ -970,10 +1006,23 @@ def main():
         patch_extract_img_feat(inner_model, trt_engine)
         logging.info(f"Using TensorRT backbone+FPN: {args.trt_backbone}")
 
+    autocast_dtype = None
+    if args.bf16:
+        if not torch.cuda.is_bf16_supported():
+            logging.warning('BF16 is not supported on this GPU; falling back to FP16 autocast')
+            autocast_dtype = torch.float16
+        else:
+            autocast_dtype = torch.bfloat16
+    elif args.fp16:
+        autocast_dtype = torch.float16
+
+    if autocast_dtype is not None:
+        logging.info('Using %s autocast for validation inference', 'BF16' if autocast_dtype is torch.bfloat16 else 'FP16')
+
     if world_size > 1:
-        results, timing_stats = multi_gpu_test(model, val_loader, gpu_collect=False)
+        results, timing_stats = multi_gpu_test(model, val_loader, gpu_collect=False, autocast_dtype=autocast_dtype)
     else:
-        results, timing_stats = single_gpu_test(model, val_loader)
+        results, timing_stats = single_gpu_test(model, val_loader, autocast_dtype=autocast_dtype)
 
     if local_rank == 0:
         # Print timing statistics
