@@ -14,6 +14,7 @@ The target is not met by any tested RaCFormer checkpoint/config pair yet.
 | TRT backbone, 3 layers | 0.4956 | 0.4443 | 911.75 ms | Above mAP target, far above latency target |
 | TRT backbone, 3 layers, BF16 profile after `jetson_clocks` | n/a | n/a | 854.82 ms | Model timing only; still far above 200 ms |
 | latency200 q900 fast-loader | 0.2356 | 0.1972 | 142.13 ms | Meets latency, fails mAP badly |
+| f2 1-layer q900 BF16 | 0.2571 | 0.2422 | 197.29 ms | Meets latency, still far below mAP target |
 | latency200 q300 BF16 | 0.0910 | 0.1069 | 197.83 ms | Meets latency, severe mAP collapse |
 
 Detailed 3-layer profile after TRT backbone shows the real bottlenecks:
@@ -26,7 +27,7 @@ Detailed 3-layer profile after TRT backbone shows the real bottlenecks:
 | Radar BEV conv | 27.67 ms |
 | Radar voxel layer | 16.46 ms |
 
-Conclusion: the remaining gap is not a validation-loop artifact. Keeping mAP > 0.45 requires accelerating or replacing the transformer/view-transformer path, or retraining a smaller student.
+Conclusion: the remaining gap is not a validation-loop artifact. Keeping mAP > 0.45 requires accelerating or replacing the transformer/view-transformer path, or retraining a smaller student. A 2-frame, 1-layer checkpoint-sliced variant reaches 197.29 ms but only 0.2571 mAP, so temporal slicing alone is not enough.
 
 ## Research Findings
 
