@@ -13,6 +13,7 @@ from torch.nn import functional as F
 from torch import nn as nn
 from mmcv.cnn import ConvModule
 from mmdet3d.ops import Voxelization
+from .dualview_distill import DualViewDistillLoss
 
 
 @DETECTORS.register_module()
@@ -42,6 +43,7 @@ class RaCFormer(MVXTwoStageDetector):
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None,
+                 dualview_distill=None,
                  num_cams=6):
         super(RaCFormer, self).__init__(pts_voxel_layer, pts_voxel_encoder,
                              pts_middle_encoder, pts_fusion_layer,
@@ -97,6 +99,10 @@ class RaCFormer(MVXTwoStageDetector):
                 )
 
         self.radar_bev_conv = nn.Sequential(*rad_conv_layers)
+        if dualview_distill is not None:
+            self.dualview_distill = DualViewDistillLoss(**dualview_distill)
+        else:
+            self.dualview_distill = None
 
     @property
     def with_img_lss_neck(self):
@@ -137,8 +143,21 @@ class RaCFormer(MVXTwoStageDetector):
             radar_points[i] = radar_point
 
         voxels, num_points, coors = self.radar_voxelize(radar_points)
+        # T9 fix: derive batch_size from the input list, not from coors[-1,0].
+        # When any sample in the batch has empty radar at a given sweep, the
+        # voxelizer drops it and coors loses its row(s); the old expression
+        # produced a smaller batch_size than the actual batch (or IndexError
+        # when ALL samples are empty), causing torch.stack mismatches in
+        # extract_feat. Passing the true batch_size lets PointPillarsScatter
+        # zero-pad missing samples uniformly.
         batch_size = len(radar_points)
         if coors.shape[0] == 0:
+            # All samples have zero radar points at this sweep: skip the voxel
+            # and middle encoders (they would crash on empty input) and feed
+            # zeros directly into radar_bev_conv. Shape constants come from the
+            # PointPillarsScatter config (in_channels=64, output_shape=(128,128)).
+            # Device must come from  (always defined, even when empty);
+            # PointPillarsScatter has no parameters so .parameters() is empty.
             rad_bev_feas = self.radar_bev_conv(
                 torch.zeros(batch_size, 64, 128, 128,
                             device=coors.device, dtype=torch.float32)
@@ -146,6 +165,10 @@ class RaCFormer(MVXTwoStageDetector):
             return rad_bev_feas
         radar_features = self.radar_voxel_encoder(voxels, num_points, coors).to(torch.float32) ## pillar feature
 
+        # T9 fix: PillarFeatureNet returns [N_voxels, 1, C]; squeeze() without
+        # an explicit dim collapses to 1D when N_voxels==1, breaking the
+        # downstream PointPillarsScatter (which indexes voxel_features[mask,:]).
+        # Use squeeze(1) so only the singleton spatial axis is removed.
         radar_features = radar_features.squeeze(1)
         rad_bev_feas = self.radar_middle_encoder(radar_features, coors, batch_size)
 
@@ -377,7 +400,12 @@ class RaCFormer(MVXTwoStageDetector):
             dict: Losses of each branch.
         """
 
-        outs = self.pts_bbox_head(pts_feats, bev_feats, radar_bev_feats, img_metas)
+        outs = self.pts_bbox_head(
+            pts_feats,
+            bev_feats,
+            radar_bev_feats,
+            img_metas,
+        )
 
         loss_depth = self.img_lss_view_transformer.get_depth_loss(gt_depth, depth)
         losses = dict(loss_depth=loss_depth)
@@ -437,6 +465,16 @@ class RaCFormer(MVXTwoStageDetector):
             dict: Losses of different branches.
         """
         img_feats, bev_feats, radar_bev_feats, depth = self.extract_feat(img, radar_points, radar_depth, radar_rcs, img_metas)
+        dualview_losses = {}
+        if self.dualview_distill is not None and self.training:
+            dualview_losses = self.dualview_distill(
+                student_bev=bev_feats[:, 0],
+                img=img,
+                depth_logits=depth,
+                img_metas=img_metas,
+                view_transformer=self.img_lss_view_transformer,
+                num_cams=self.num_cams,
+            )
 
         for i in range(len(img_metas)):
             img_metas[i]['gt_bboxes_3d'] = gt_bboxes_3d[i]
@@ -445,7 +483,18 @@ class RaCFormer(MVXTwoStageDetector):
         # gt_depth contains all frames, but depth loss is only computed for first frame
         # Slice to first num_cams cameras (first frame only)
         gt_depth_first_frame = gt_depth[:, :self.num_cams].contiguous()
-        losses = self.forward_pts_train(img_feats, bev_feats, radar_bev_feats, depth, gt_bboxes_3d, gt_labels_3d, gt_depth_first_frame, img_metas, gt_bboxes_ignore)
+        losses = self.forward_pts_train(
+            img_feats,
+            bev_feats,
+            radar_bev_feats,
+            depth,
+            gt_bboxes_3d,
+            gt_labels_3d,
+            gt_depth_first_frame,
+            img_metas,
+            gt_bboxes_ignore=gt_bboxes_ignore,
+        )
+        losses.update(dualview_losses)
         return losses
 
     def forward_test(self, img_metas, img=None, **kwargs):
@@ -457,7 +506,12 @@ class RaCFormer(MVXTwoStageDetector):
         return self.simple_test(img_metas[0], img[0], **kwargs)
 
     def simple_test_pts(self, x, bev_feats, radar_bev_feats, img_metas, rescale=False):
-        outs = self.pts_bbox_head(x, bev_feats, radar_bev_feats, img_metas)
+        outs = self.pts_bbox_head(
+            x,
+            bev_feats,
+            radar_bev_feats,
+            img_metas,
+        )
         bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas[0], rescale=rescale)
 
         bbox_results = [
@@ -475,7 +529,13 @@ class RaCFormer(MVXTwoStageDetector):
         img_feats, bev_feats, radar_bev_feats, _ = self.extract_feat(img=img, radar_points=radar_points, radar_depth=radar_depth, radar_rcs=radar_rcs, img_metas=img_metas)
 
         bbox_list = [dict() for _ in range(len(img_metas))]
-        bbox_pts = self.simple_test_pts(img_feats, bev_feats, radar_bev_feats, img_metas, rescale=rescale)
+        bbox_pts = self.simple_test_pts(
+            img_feats,
+            bev_feats,
+            radar_bev_feats,
+            img_metas,
+            rescale=rescale,
+        )
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
 
@@ -563,4 +623,3 @@ class RaCFormer(MVXTwoStageDetector):
             self.memory_radar_bev.pop(pop_key)
             
         return bbox_list
-
