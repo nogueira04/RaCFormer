@@ -1,0 +1,31 @@
+diff --git a/setup.py b/setup.py
+index 8d836534..fe371b9a 100644
+--- a/setup.py
++++ b/setup.py
+@@ -17,7 +17,20 @@ try:
+         from torch_mlu.utils.cpp_extension import BuildExtension
+         EXT_TYPE = 'pytorch'
+     else:
+-        from torch.utils.cpp_extension import BuildExtension
++        from torch.utils.cpp_extension import BuildExtension as _BuildExtension
++        class BuildExtension(_BuildExtension):
++            def build_extensions(self):
++                original_linker_args = self.compiler.linker_so or []
++
++                filtered_linker_args = [
++                    arg for arg in original_linker_args
++                    if arg != '-Wl,--sysroot=/'
++                ]
++
++                self.compiler.linker_so = filtered_linker_args
++
++                super().build_extensions()
++
+         EXT_TYPE = 'pytorch'
+     cmd_class = {'build_ext': BuildExtension}
+ except ModuleNotFoundError:
+@@ -421,3 +434,4 @@ setup(
+     ext_modules=get_extensions(),
+     cmdclass=cmd_class,
+     zip_safe=False)
++
