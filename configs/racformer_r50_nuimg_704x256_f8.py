@@ -217,7 +217,8 @@ train_pipeline = [
     dict(type='RadarPointToMultiViewDepth', downsample=1, grid_config=grid_config, test_mode=False),
     dict(type='RaCFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img', 'gt_depth', 'radar_depth', 'radar_rcs', 'radar_points'], meta_keys=(
-        'filename', 'ori_shape', 'img_shape', 'pad_shape', 'lidar2img', 'img_timestamp', 'intrinsics'))
+        'filename', 'ori_shape', 'img_shape', 'pad_shape', 'lidar2img', 'img_timestamp', 'intrinsics',
+        'scene_condition'))
 ]
 
 test_pipeline = [
@@ -243,7 +244,7 @@ test_pipeline = [
             dict(type='RaCFormatBundle3D', class_names=class_names, with_label=False),
             dict(type='Collect3D', keys=['img', 'gt_depth', 'radar_points', 'radar_depth', 'radar_rcs'], meta_keys=(
                 'filename', 'box_type_3d', 'ori_shape', 'img_shape', 'pad_shape',
-                'lidar2img', 'img_timestamp', 'intrinsics'))
+                'lidar2img', 'img_timestamp', 'intrinsics', 'scene_condition'))
         ])
 ]
 

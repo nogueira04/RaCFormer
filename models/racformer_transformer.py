@@ -32,7 +32,13 @@ class RaCFormerTransformer(BaseModule):
                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
                  init_cfg=None,
-                 num_cams=6):
+                 num_cams=6,
+                 adaptive_fusion_gate=False,
+                 condition_fusion_gate=False,
+                 continuous_reliability_query_fusion=False,
+                 reliability_hidden_dims=128,
+                 reliability_use_pairwise_cosine=True,
+                 reliability_use_query_geometry=True):
         assert init_cfg is None, 'To prevent abnormal initialization ' \
                             'behavior, init_cfg is not allowed to be set'
         super(RaCFormerTransformer, self).__init__(init_cfg=init_cfg)
@@ -43,7 +49,13 @@ class RaCFormerTransformer(BaseModule):
 
         self.decoder = RaCFormerTransformerDecoder(embed_dims, num_frames, num_points, num_points_bev, num_layers, num_levels, num_classes, code_size, \
                                                    img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, pc_range=pc_range, num_ray=num_ray, \
-                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams)
+                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams,
+                                                    adaptive_fusion_gate=adaptive_fusion_gate,
+                                                    condition_fusion_gate=condition_fusion_gate,
+                                                    continuous_reliability_query_fusion=continuous_reliability_query_fusion,
+                                                    reliability_hidden_dims=reliability_hidden_dims,
+                                                    reliability_use_pairwise_cosine=reliability_use_pairwise_cosine,
+                                                    reliability_use_query_geometry=reliability_use_query_geometry)
 
     @torch.no_grad()
     def init_weights(self):
@@ -75,7 +87,13 @@ class RaCFormerTransformerDecoder(BaseModule):
                  d_region_list=[0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
                  init_cfg=None,
-                 num_cams=6):
+                 num_cams=6,
+                 adaptive_fusion_gate=False,
+                 condition_fusion_gate=False,
+                 continuous_reliability_query_fusion=False,
+                 reliability_hidden_dims=128,
+                 reliability_use_pairwise_cosine=True,
+                 reliability_use_query_geometry=True):
         super(RaCFormerTransformerDecoder, self).__init__(init_cfg)
         self.num_layers = num_layers
         self.pc_range = pc_range
@@ -86,6 +104,12 @@ class RaCFormerTransformerDecoder(BaseModule):
             embed_dims, num_frames, num_points, num_points_bev, num_levels, num_classes, code_size, \
                 img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, num_ray=num_ray, pc_range=pc_range, \
                     d_region_list=d_region_list, spatial_shapes=spatial_shapes,
+                    adaptive_fusion_gate=adaptive_fusion_gate,
+                    condition_fusion_gate=condition_fusion_gate,
+                    continuous_reliability_query_fusion=continuous_reliability_query_fusion,
+                    reliability_hidden_dims=reliability_hidden_dims,
+                    reliability_use_pairwise_cosine=reliability_use_pairwise_cosine,
+                    reliability_use_query_geometry=reliability_use_query_geometry,
         )
 
     @torch.no_grad()
@@ -142,6 +166,60 @@ class RaCFormerTransformerDecoder(BaseModule):
         return cls_scores, bbox_preds
 
 
+class ContinuousReliabilityQueryFusion(BaseModule):
+    def __init__(self,
+                 hidden_dims=128,
+                 use_pairwise_cosine=True,
+                 use_query_geometry=True,
+                 init_cfg=None):
+        super(ContinuousReliabilityQueryFusion, self).__init__(init_cfg)
+        self.use_pairwise_cosine = use_pairwise_cosine
+        self.use_query_geometry = use_query_geometry
+
+        stat_dims = 6
+        if self.use_pairwise_cosine:
+            stat_dims += 3
+        if self.use_query_geometry:
+            stat_dims += 2
+
+        self.gate = nn.Sequential(
+            nn.Linear(stat_dims, hidden_dims),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dims, 3),
+        )
+
+    @torch.no_grad()
+    def init_weights(self):
+        xavier_init(self.gate[0], distribution='uniform', bias=0.)
+        nn.init.zeros_(self.gate[-1].weight)
+        nn.init.zeros_(self.gate[-1].bias)
+
+    def forward(self, query_bbox, query_feat, query_radar_feat, query_lss_feat):
+        stats = [
+            query_feat.abs().mean(dim=-1, keepdim=True),
+            query_radar_feat.abs().mean(dim=-1, keepdim=True),
+            query_lss_feat.abs().mean(dim=-1, keepdim=True),
+            query_feat.std(dim=-1, keepdim=True, unbiased=False),
+            query_radar_feat.std(dim=-1, keepdim=True, unbiased=False),
+            query_lss_feat.std(dim=-1, keepdim=True, unbiased=False),
+        ]
+        if self.use_pairwise_cosine:
+            stats.extend([
+                F.cosine_similarity(query_feat, query_radar_feat, dim=-1, eps=1e-6).unsqueeze(-1),
+                F.cosine_similarity(query_feat, query_lss_feat, dim=-1, eps=1e-6).unsqueeze(-1),
+                F.cosine_similarity(query_radar_feat, query_lss_feat, dim=-1, eps=1e-6).unsqueeze(-1),
+            ])
+        if self.use_query_geometry:
+            stats.extend([
+                query_bbox[..., 1:2],
+                torch.norm(query_bbox[..., 8:10], dim=-1, keepdim=True),
+            ])
+
+        reliability_stats = torch.cat(stats, dim=-1)
+        gate = torch.sigmoid(self.gate(reliability_stats)) * 2.0
+        return gate
+
+
 class RaCFormerTransformerDecoderLayer(BaseModule):
     def __init__(self, 
                  embed_dims, 
@@ -159,7 +237,13 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
                  pc_range=[], 
                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
                  spatial_shapes=(128, 128), 
-                 init_cfg=None):
+                 init_cfg=None,
+                 adaptive_fusion_gate=False,
+                 condition_fusion_gate=False,
+                 continuous_reliability_query_fusion=False,
+                 reliability_hidden_dims=128,
+                 reliability_use_pairwise_cosine=True,
+                 reliability_use_query_geometry=True):
         super(RaCFormerTransformerDecoderLayer, self).__init__(init_cfg)
 
         self.embed_dims = embed_dims
@@ -191,6 +275,28 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         self.norm3 = nn.LayerNorm(embed_dims)
 
         self.fusion = nn.Linear(embed_dims*3, embed_dims)
+        self.adaptive_fusion_gate = adaptive_fusion_gate
+        if self.adaptive_fusion_gate:
+            self.fusion_gate = nn.Sequential(
+                nn.Linear(embed_dims * 3, embed_dims),
+                nn.ReLU(inplace=True),
+                nn.Linear(embed_dims, 3),
+            )
+        self.condition_fusion_gate = condition_fusion_gate
+        if self.condition_fusion_gate:
+            self.condition_embedding = nn.Embedding(3, embed_dims)
+            self.condition_gate = nn.Sequential(
+                nn.Linear(embed_dims * 4, embed_dims),
+                nn.ReLU(inplace=True),
+                nn.Linear(embed_dims, 3),
+            )
+        self.continuous_reliability_query_fusion = continuous_reliability_query_fusion
+        if self.continuous_reliability_query_fusion:
+            self.reliability_fusion = ContinuousReliabilityQueryFusion(
+                hidden_dims=reliability_hidden_dims,
+                use_pairwise_cosine=reliability_use_pairwise_cosine,
+                use_query_geometry=reliability_use_query_geometry,
+            )
 
         self.norm_radar_bev = nn.LayerNorm(embed_dims)
         self.norm_lss_bev = nn.LayerNorm(embed_dims)
@@ -226,6 +332,17 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         nn.init.constant_(self.cls_branch[-1].bias, bias_init)
         
         xavier_init(self.fusion, distribution='uniform', bias=0.)
+        if self.adaptive_fusion_gate:
+            xavier_init(self.fusion_gate[0], distribution='uniform', bias=0.)
+            nn.init.zeros_(self.fusion_gate[-1].weight)
+            nn.init.zeros_(self.fusion_gate[-1].bias)
+        if self.condition_fusion_gate:
+            nn.init.zeros_(self.condition_embedding.weight)
+            xavier_init(self.condition_gate[0], distribution='uniform', bias=0.)
+            nn.init.zeros_(self.condition_gate[-1].weight)
+            nn.init.zeros_(self.condition_gate[-1].bias)
+        if self.continuous_reliability_query_fusion:
+            self.reliability_fusion.init_weights()
 
     def refine_bbox(self, bbox_proposal, bbox_delta):
         dz = inverse_sigmoid(bbox_proposal[..., 1:3])
@@ -234,6 +351,17 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         theta = bbox_proposal[..., 0:1] + (torch.sigmoid(bbox_delta[..., 0:1])*2-1) / self.num_ray
 
         return torch.cat([theta, dz_new, bbox_delta[..., 3:]], dim=-1)
+
+    def _condition_ids(self, img_metas, device):
+        condition_to_id = {'day': 0, 'night': 1, 'rain': 2}
+        ids = []
+        for meta in img_metas:
+            condition = meta.get('scene_condition', 'day')
+            if isinstance(condition, (list, tuple)) and len(condition) > 0:
+                condition = condition[0]
+            condition = str(condition).lower()
+            ids.append(condition_to_id.get(condition, 0))
+        return torch.tensor(ids, dtype=torch.long, device=device)
 
 
     def forward(self, query_bbox, query_feat, mlvl_feats, lss_bev_feats, radar_bev_feats, attn_mask, img_metas, layer=0):
@@ -254,7 +382,43 @@ class RaCFormerTransformerDecoderLayer(BaseModule):
         sampled_feat = self.sampling(query_bbox, query_feat, mlvl_feats, img_metas, d_region=self.d_region_list[layer])
 
         query_feat = self.norm2(self.mixing(sampled_feat, query_feat))
-        query_feat = self.norm_fusion(self.fusion(torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)))
+        fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
+        if self.condition_fusion_gate:
+            condition_ids = self._condition_ids(img_metas, query_feat.device)
+            condition_feat = self.condition_embedding(condition_ids)[:, None, :].expand(-1, query_feat.shape[1], -1)
+            condition_gate = torch.sigmoid(self.condition_gate(torch.cat((fusion_input, condition_feat), dim=-1))) * 2.0
+            query_feat = query_feat * condition_gate[..., 0:1]
+            query_radar_feat = query_radar_feat * condition_gate[..., 1:2]
+            query_lss_feat = query_lss_feat * condition_gate[..., 2:3]
+            fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
+            if DUMP.enabled:
+                torch.save(
+                    condition_gate.detach().mean(dim=(0, 1)),
+                    '{}/condition_fusion_gate_stage{}.pth'.format(DUMP.out_dir, DUMP.stage_count)
+                )
+        if self.adaptive_fusion_gate:
+            fusion_gate = torch.sigmoid(self.fusion_gate(fusion_input)) * 2.0
+            query_feat = query_feat * fusion_gate[..., 0:1]
+            query_radar_feat = query_radar_feat * fusion_gate[..., 1:2]
+            query_lss_feat = query_lss_feat * fusion_gate[..., 2:3]
+            fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
+            if DUMP.enabled:
+                torch.save(
+                    fusion_gate.detach().mean(dim=(0, 1)),
+                    '{}/adaptive_fusion_gate_stage{}.pth'.format(DUMP.out_dir, DUMP.stage_count)
+                )
+        if self.continuous_reliability_query_fusion:
+            reliability_gate = self.reliability_fusion(query_bbox, query_feat, query_radar_feat, query_lss_feat)
+            query_feat = query_feat * reliability_gate[..., 0:1]
+            query_radar_feat = query_radar_feat * reliability_gate[..., 1:2]
+            query_lss_feat = query_lss_feat * reliability_gate[..., 2:3]
+            fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
+            if DUMP.enabled:
+                torch.save(
+                    reliability_gate.detach().mean(dim=(0, 1)),
+                    '{}/continuous_reliability_query_gate_stage{}.pth'.format(DUMP.out_dir, DUMP.stage_count)
+                )
+        query_feat = self.norm_fusion(self.fusion(fusion_input))
         query_feat = self.norm3(self.ffn(query_feat))
 
         cls_score = self.cls_branch(query_feat)  # [B, Q, num_classes]
