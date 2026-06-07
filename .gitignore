@@ -8,6 +8,10 @@
 *.pdf
 *.md
 
+# Cleanup docs are intentionally visible as untracked working-tree docs.
+!docs/
+!docs/**/*.md
+
 eval_outputs/
 outputs/
 video_outputs_3d/
@@ -148,3 +152,18 @@ data/sunrgbd/OFFICIAL_SUNRGBD/
 
 # Waymo evaluation
 mmdet3d/core/evaluation/waymo_utils/compute_detection_metrics_main
+
+# RaCFormer research artifact hygiene
+artifacts/
+research/**/checkpoints/
+research/**/*.pth
+research/**/*.pt
+research/**/*.pkl
+research/**/*.npz
+research/**/submission*/
+research/**/train_work_dir/
+research/**/work_dirs/
+research/**/results_nusc.json
+research/**/*slurm*.out
+research/**/*slurm*.err
+research/**/*.log
