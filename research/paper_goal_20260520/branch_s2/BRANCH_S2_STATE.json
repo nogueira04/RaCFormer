@@ -1,0 +1,294 @@
+{
+  "active_jobs": {
+    "step2_day_specialist_s2_resume_after_1503": {
+      "dependency": "afterany:1503",
+      "job_id": "1504",
+      "purpose": "guarded Step 2 resume if job 1503 exits before current_step advances beyond 2",
+      "queued_utc": "20260522T143038Z",
+      "status": "PENDING"
+    },
+    "step2_day_specialist_s2_resume_after_1504": {
+      "dependency": "afterany:1504",
+      "job_id": "1505",
+      "purpose": "second guarded Step 2 resume if current_step remains 2",
+      "queued_utc": "20260522T143337Z",
+      "status": "PENDING"
+    },
+    "step2_day_specialist_s2_resume_after_1505": {
+      "dependency": "afterany:1505",
+      "job_id": "1508",
+      "purpose": "third guarded Step 2 resume if current_step remains 2",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step2_day_specialist_s2_resume_after_1508": {
+      "dependency": "afterany:1508",
+      "job_id": "1509",
+      "purpose": "fourth guarded Step 2 resume if current_step remains 2",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step2_day_specialist_s2_resume_after_1509": {
+      "dependency": "afterany:1509",
+      "job_id": "1510",
+      "purpose": "fifth guarded Step 2 resume if current_step remains 2",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step2_day_specialist_s2_resume_after_1510": {
+      "dependency": "afterany:1510",
+      "job_id": "1511",
+      "purpose": "sixth guarded Step 2 resume if current_step remains 2",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step3_night_specialist_s2_guard_after_1505": {
+      "cancelled_utc": "20260522T143615Z",
+      "dependency": "afterany:1505",
+      "job_id": "1506",
+      "purpose": "guarded Step 3 start only if current_step is 3",
+      "queued_utc": "20260522T143337Z",
+      "status": "CANCELLED_REDUNDANT_GUARD"
+    },
+    "step3_night_specialist_s2_guard_after_1511": {
+      "dependency": "afterany:1511",
+      "job_id": "1512",
+      "purpose": "guarded Step 3 start only if current_step is 3",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step4_integrated_s2_guard_after_1506": {
+      "cancelled_utc": "20260522T143615Z",
+      "dependency": "afterany:1506",
+      "job_id": "1507",
+      "purpose": "guarded Step 4 integrated eval only if current_step is 4",
+      "queued_utc": "20260522T143337Z",
+      "status": "CANCELLED_REDUNDANT_GUARD"
+    },
+    "step4_integrated_s2_guard_after_1512": {
+      "dependency": "afterany:1512",
+      "job_id": "1513",
+      "purpose": "guarded Step 4 integrated eval only if current_step is 4",
+      "queued_utc": "20260522T143527Z",
+      "status": "PENDING"
+    },
+    "step5_seed20260502_replication_after_step4": {
+      "dependency": "afterany:1513",
+      "job_id": "1514",
+      "purpose": "guarded Step 5 seed-20260502 replication if current_step is 5",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step5_seed20260502_replication_resume_after_1514": {
+      "dependency": "afterany:1514",
+      "job_id": "1515",
+      "purpose": "guarded Step 5 resume if current_step remains 5",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step5_seed20260502_replication_resume_after_1515": {
+      "dependency": "afterany:1515",
+      "job_id": "1516",
+      "purpose": "guarded Step 5 resume if current_step remains 5",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step5_seed20260502_replication_resume_after_1516": {
+      "dependency": "afterany:1516",
+      "job_id": "1517",
+      "purpose": "guarded Step 5 resume if current_step remains 5",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step6_integrated_seed20260502_guard_after_1517": {
+      "dependency": "afterany:1517",
+      "job_id": "1518",
+      "purpose": "guarded Step 6 integrated eval only if current_step is 6",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step7_ablation_guard_after_1518": {
+      "dependency": "afterany:1518",
+      "job_id": "1519",
+      "purpose": "guarded Step 7 ablation only if current_step is 7",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    },
+    "step8_twilight_guard_after_1519": {
+      "dependency": "afterany:1519",
+      "job_id": "1520",
+      "purpose": "guarded Step 8 twilight analysis only if current_step is 8",
+      "queued_utc": "20260522T145349Z",
+      "status": "PENDING"
+    }
+  },
+  "artifacts": {
+    "corrected_terminal_report": "research/paper_goal_20260520/branch_s2/BRANCH_S2_RESULT_20260525T163403Z.md",
+    "day_epoch3_checkpoint": "research/paper_goal_20260520/branch_s2/checkpoints/day_specialist_s2_seed0_epoch3.pth",
+    "day_epoch3_checkpoint_sha256": "5ff913ca7518485a94c06ef5f6fdb1b4228217833f4a737fee145ea24a92c666",
+    "day_epoch3_eval_by_condition": "research/paper_goal_20260520/branch_s2/evals/day_specialist_s2_seed0_epoch3/eval_by_condition.json",
+    "failure_mode_report": "research/paper_goal_20260520/branch_s2/BRANCH_S2_FAILURE_MODE_20260523T021636Z.md"
+  },
+  "branch": "S2",
+  "checkpoints": {
+    "baseline_b": {
+      "path": "checkpoints/racformer_r50_f8.pth",
+      "sha256": "0afe006954836de2ab059d417328fb46ed41efaab40386186168a0c38c129d66"
+    },
+    "router": {
+      "path": "research/paper_goal_20260520/branch_s/checkpoints/router.pth",
+      "sha256": "9fb1a5dc8bd1511c817791623e3a51b5c39ddccc88260e754fc3844a270a8ce2"
+    },
+    "router_s2_symlink": {
+      "path": "research/paper_goal_20260520/branch_s2/checkpoints/router.pth",
+      "target": "../../branch_s/checkpoints/router.pth"
+    }
+  },
+  "contract_report_verdict": "BRANCH_S2_FAIL_GATE_MISS",
+  "cumulative_gpu_hours": 0.0,
+  "current_seed": "0",
+  "current_step": "TERMINAL",
+  "halt_log": [
+    {
+      "detail": "After Step 2 day-undertrained hard kill at epoch 3, marked Steps 3-8 skipped_terminal and recorded corrected terminal report.",
+      "reason": "state_terminal_skip_reconciliation",
+      "utc": "2026-05-25T16:34:03Z"
+    }
+  ],
+  "halt_reasons_log": [
+    {
+      "detail": "No existing Branch S2 state or STOP sentinel was present; Step 0 memo written and state advanced to Step 1.",
+      "event": "bootstrap",
+      "step": "0",
+      "utc": "20260522T140608Z"
+    },
+    {
+      "event": "step_complete",
+      "next_step": "2",
+      "router_path": "research/paper_goal_20260520/branch_s/checkpoints/router.pth",
+      "router_s2_symlink": "research/paper_goal_20260520/branch_s2/checkpoints/router.pth",
+      "router_val_accuracy": 0.9998020194020986,
+      "step": "1",
+      "utc": "20260522T140741Z"
+    },
+    {
+      "event": "queued_guarded_continuation",
+      "from_step4_job": "1513",
+      "jobs": {
+        "step5_seed20260502_replication_after_step4": "1514",
+        "step5_seed20260502_replication_resume_after_1514": "1515",
+        "step5_seed20260502_replication_resume_after_1515": "1516",
+        "step5_seed20260502_replication_resume_after_1516": "1517",
+        "step6_integrated_seed20260502_guard_after_1517": "1518",
+        "step7_ablation_guard_after_1518": "1519",
+        "step8_twilight_guard_after_1519": "1520"
+      },
+      "utc": "20260522T145349Z"
+    },
+    {
+      "detail": {
+        "day_mAP": 0.00041965918189581543,
+        "epoch": 3,
+        "subset_counts": {
+          "day": 19685,
+          "night": 3385,
+          "rain": 5060
+        },
+        "threshold": 0.4,
+        "trajectory": {
+          "epoch_3": {
+            "day_ECE": 0.09201702735907442,
+            "day_NDS": 0.03751101070505466,
+            "day_mAP": 0.00041965918189581543,
+            "night_ECE": 0.11596380332621584,
+            "night_NDS": 0.028855562264527446,
+            "night_mAP": 0.0,
+            "overall_ECE": 0.09515031744469499,
+            "overall_NDS": 0.03798615739409591,
+            "overall_mAP": 0.0002566334662547544,
+            "rain_ECE": 0.0960369286186666,
+            "rain_NDS": 0.04480356702653625,
+            "rain_mAP": 0.0004104694779363473,
+            "split_counts": {
+              "day": 4449,
+              "day_matched": 0,
+              "night": 602,
+              "rain": 968
+            }
+          }
+        }
+      },
+      "event": "terminal",
+      "reason": "day_undertrained",
+      "step": "2",
+      "utc": "20260523T021636Z"
+    }
+  ],
+  "metrics": {
+    "baseline_b_ECE": 0.07760817409995023,
+    "baseline_b_NDS": 0.6062222358717055,
+    "baseline_b_day_mAP": 0.5386891183089149,
+    "baseline_b_night_mAP": 0.322834906906437,
+    "baseline_b_overall_mAP": 0.5296299576513736,
+    "baseline_b_rain_mAP": 0.572840869236115,
+    "day_s2_completed_epoch": 3,
+    "day_s2_epoch3_ECE": 0.09515031744469499,
+    "day_s2_epoch3_NDS": 0.03798615739409591,
+    "day_s2_epoch3_day_mAP": 0.00041965918189581543,
+    "day_s2_epoch3_night_mAP": 0.0,
+    "day_s2_epoch3_overall_mAP": 0.0002566334662547544,
+    "day_s2_per_epoch": {
+      "epoch_3": {
+        "day_ECE": 0.09201702735907442,
+        "day_NDS": 0.03751101070505466,
+        "day_mAP": 0.00041965918189581543,
+        "night_ECE": 0.11596380332621584,
+        "night_NDS": 0.028855562264527446,
+        "night_mAP": 0.0,
+        "overall_ECE": 0.09515031744469499,
+        "overall_NDS": 0.03798615739409591,
+        "overall_mAP": 0.0002566334662547544,
+        "rain_ECE": 0.0960369286186666,
+        "rain_NDS": 0.04480356702653625,
+        "rain_mAP": 0.0004104694779363473,
+        "split_counts": {
+          "day": 4449,
+          "day_matched": 0,
+          "night": 602,
+          "rain": 968
+        }
+      }
+    },
+    "router_day_precision": 1.0,
+    "router_day_recall": 0.9997752303888514,
+    "router_night_precision": 0.9983416252072969,
+    "router_night_recall": 1.0,
+    "router_step_gpu_hours": 0.0,
+    "router_val_accuracy": 0.9998020194020986,
+    "twilight_subset_size": 4
+  },
+  "reports": {
+    "branch_choice_memo": "research/night_gen_phase1/reports/BRANCH_CHOICE_S2_20260522T140608Z.md",
+    "contract": "research/paper_goal_20260520/BRANCH_S2_FROMSCRATCH_CONTRACT.md",
+    "day_s2_training_work_dir": "outputs/branch_s2_day_specialist_seed0_epoch1/2026-05-22/11-17-50",
+    "day_specialist_s2_subset": "research/paper_goal_20260520/branch_s2/DAY_SPECIALIST_S2_SUBSET.md",
+    "failure_mode": "research/paper_goal_20260520/branch_s2/BRANCH_S2_FAILURE_MODE_20260523T021636Z.md",
+    "final_result": "research/paper_goal_20260520/branch_s2/BRANCH_S2_RESULT_20260523T021636Z.md",
+    "router_step1_metrics": "research/paper_goal_20260520/branch_s/router_step1/router_metrics.json"
+  },
+  "schema_version": "branch-s2-fromscratch-v1",
+  "step_status": {
+    "0": "complete",
+    "1": "complete",
+    "2": "failed",
+    "3": "skipped_terminal",
+    "4": "skipped_terminal",
+    "5": "skipped_terminal",
+    "6": "skipped_terminal",
+    "7": "skipped_terminal",
+    "8": "skipped_terminal",
+    "9": "complete"
+  },
+  "terminal_reason": "day_undertrained_epoch3_hard_kill",
+  "terminal_verdict": "BRANCH_S2_FAIL_DAY_UNDERTRAINED"
+}

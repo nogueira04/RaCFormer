@@ -1,0 +1,696 @@
+{
+  "adapter_after_training": {
+    "adapter_trainable_parameters": 83008,
+    "current_frame_cameras": 6,
+    "fpn_level_shapes": [
+      {
+        "feature_shape": [
+          48,
+          256,
+          64,
+          176
+        ],
+        "level": 0,
+        "residual_shape": [
+          6,
+          256,
+          64,
+          176
+        ]
+      },
+      {
+        "feature_shape": [
+          48,
+          256,
+          32,
+          88
+        ],
+        "level": 1,
+        "residual_shape": [
+          6,
+          256,
+          32,
+          88
+        ]
+      },
+      {
+        "feature_shape": [
+          48,
+          256,
+          16,
+          44
+        ],
+        "level": 2,
+        "residual_shape": [
+          6,
+          256,
+          16,
+          44
+        ]
+      },
+      {
+        "feature_shape": [
+          48,
+          256,
+          8,
+          22
+        ],
+        "level": 3,
+        "residual_shape": [
+          6,
+          256,
+          8,
+          22
+        ]
+      }
+    ],
+    "per_camera_dino_shapes": [
+      [
+        1,
+        1024,
+        18,
+        50
+      ],
+      [
+        1,
+        1024,
+        18,
+        50
+      ],
+      [
+        1,
+        1024,
+        18,
+        50
+      ],
+      [
+        1,
+        1024,
+        18,
+        50
+      ],
+      [
+        1,
+        1024,
+        18,
+        50
+      ],
+      [
+        1,
+        1024,
+        18,
+        50
+      ]
+    ],
+    "rank": 16,
+    "residual_weight": 0.1,
+    "teacher_frozen": true,
+    "teacher_load_info": {
+      "hidden_size": 1024,
+      "missing_count": 0,
+      "state_dict_keys": 439,
+      "unexpected_count": 0
+    }
+  },
+  "adapter_initial": {},
+  "baseline_eval": {
+    "clean": {
+      "adapter_stats": {},
+      "dataset_eval_NDS": 0.263817015596449,
+      "dataset_eval_mAP": 0.23619135096455937,
+      "inference_sec": 30.963158130645752,
+      "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/baseline_clean/submission/pts_bbox/results_nusc.json",
+      "samples": 64,
+      "summary": {
+        "bicycle_label_aps": {
+          "0.5": 0.0443597616237533,
+          "1.0": 0.11779468738299206,
+          "2.0": 0.3116612769181075,
+          "4.0": 0.6493595663008701
+        },
+        "bicycle_mean_dist_ap": 0.28079382305643075,
+        "mean_ap": 0.23619135096455937,
+        "motorcycle_mean_dist_ap": 0.0,
+        "nd_score": 0.263817015596449,
+        "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/baseline_clean/submission/pts_bbox/metrics_summary.json"
+      },
+      "tag": "baseline_clean",
+      "val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_clean_mini_64.pkl"
+    },
+    "vru": {
+      "adapter_stats": {},
+      "dataset_eval_NDS": 0.5819065983932412,
+      "dataset_eval_mAP": 0.5131200761220593,
+      "inference_sec": 31.053019762039185,
+      "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/baseline_vru/submission/pts_bbox/results_nusc.json",
+      "samples": 64,
+      "summary": {
+        "bicycle_label_aps": {
+          "0.5": 0.4420881454920429,
+          "1.0": 0.6643021259157593,
+          "2.0": 0.7673885667071778,
+          "4.0": 0.7860239132451189
+        },
+        "bicycle_mean_dist_ap": 0.6649506878400248,
+        "mean_ap": 0.5131200761220593,
+        "motorcycle_mean_dist_ap": 0.7104242574354698,
+        "nd_score": 0.5819065983932412,
+        "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/baseline_vru/submission/pts_bbox/metrics_summary.json"
+      },
+      "tag": "baseline_vru",
+      "val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_vru_mini_64.pkl"
+    }
+  },
+  "candidate_eval": {
+    "clean": {
+      "adapter_stats": {
+        "adapter_trainable_parameters": 83008,
+        "current_frame_cameras": 6,
+        "fpn_level_shapes": [
+          {
+            "feature_shape": [
+              48,
+              256,
+              64,
+              176
+            ],
+            "level": 0,
+            "residual_shape": [
+              6,
+              256,
+              64,
+              176
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              32,
+              88
+            ],
+            "level": 1,
+            "residual_shape": [
+              6,
+              256,
+              32,
+              88
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              16,
+              44
+            ],
+            "level": 2,
+            "residual_shape": [
+              6,
+              256,
+              16,
+              44
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              8,
+              22
+            ],
+            "level": 3,
+            "residual_shape": [
+              6,
+              256,
+              8,
+              22
+            ]
+          }
+        ],
+        "per_camera_dino_shapes": [
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ]
+        ],
+        "rank": 16,
+        "residual_weight": 0.1,
+        "teacher_frozen": true,
+        "teacher_load_info": {
+          "hidden_size": 1024,
+          "missing_count": 0,
+          "state_dict_keys": 439,
+          "unexpected_count": 0
+        }
+      },
+      "dataset_eval_NDS": 0.259650971113743,
+      "dataset_eval_mAP": 0.22936367702536958,
+      "inference_sec": 30.06568431854248,
+      "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/candidate_clean/submission/pts_bbox/results_nusc.json",
+      "samples": 64,
+      "summary": {
+        "bicycle_label_aps": {
+          "0.5": 0.06280455860598924,
+          "1.0": 0.21368046915035951,
+          "2.0": 0.3289653757140148,
+          "4.0": 0.5564202248535995
+        },
+        "bicycle_mean_dist_ap": 0.29046765708099076,
+        "mean_ap": 0.22936367702536958,
+        "motorcycle_mean_dist_ap": 0.0,
+        "nd_score": 0.259650971113743,
+        "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/candidate_clean/submission/pts_bbox/metrics_summary.json"
+      },
+      "tag": "candidate_clean",
+      "val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_clean_mini_64.pkl"
+    },
+    "vru": {
+      "adapter_stats": {
+        "adapter_trainable_parameters": 83008,
+        "current_frame_cameras": 6,
+        "fpn_level_shapes": [
+          {
+            "feature_shape": [
+              48,
+              256,
+              64,
+              176
+            ],
+            "level": 0,
+            "residual_shape": [
+              6,
+              256,
+              64,
+              176
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              32,
+              88
+            ],
+            "level": 1,
+            "residual_shape": [
+              6,
+              256,
+              32,
+              88
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              16,
+              44
+            ],
+            "level": 2,
+            "residual_shape": [
+              6,
+              256,
+              16,
+              44
+            ]
+          },
+          {
+            "feature_shape": [
+              48,
+              256,
+              8,
+              22
+            ],
+            "level": 3,
+            "residual_shape": [
+              6,
+              256,
+              8,
+              22
+            ]
+          }
+        ],
+        "per_camera_dino_shapes": [
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ],
+          [
+            1,
+            1024,
+            18,
+            50
+          ]
+        ],
+        "rank": 16,
+        "residual_weight": 0.1,
+        "teacher_frozen": true,
+        "teacher_load_info": {
+          "hidden_size": 1024,
+          "missing_count": 0,
+          "state_dict_keys": 439,
+          "unexpected_count": 0
+        }
+      },
+      "dataset_eval_NDS": 0.5391574291981015,
+      "dataset_eval_mAP": 0.4562641151694516,
+      "inference_sec": 28.07641863822937,
+      "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/candidate_vru/submission/pts_bbox/results_nusc.json",
+      "samples": 64,
+      "summary": {
+        "bicycle_label_aps": {
+          "0.5": 0.3814201086536672,
+          "1.0": 0.6454185504299037,
+          "2.0": 0.7599118600029875,
+          "4.0": 0.7796184713349621
+        },
+        "bicycle_mean_dist_ap": 0.6415922476053801,
+        "mean_ap": 0.4562641151694516,
+        "motorcycle_mean_dist_ap": 0.578369194129368,
+        "nd_score": 0.5391574291981015,
+        "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/candidate_vru/submission/pts_bbox/metrics_summary.json"
+      },
+      "tag": "candidate_vru",
+      "val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_vru_mini_64.pkl"
+    }
+  },
+  "candidate_id": "rcdino-vru-semantic-adapter",
+  "cuda_available": true,
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "cuda_max_memory_allocated_mb": 7066.47216796875,
+  "elapsed_sec": 304.85844016075134,
+  "errors": [],
+  "git_rev": "869407e",
+  "gpu_hours_charged": 0.08468290004465315,
+  "host": "livenode02",
+  "identity": {
+    "baseline_repeat_max_abs_diff": Infinity,
+    "pass": false,
+    "threshold": 1e-06,
+    "zero_weight_max_abs_diff": 64.83442687988281
+  },
+  "kill_checks": {
+    "bicycle_ap_delta_ge_0p010": false,
+    "clean_map_drop_le_0p010": true,
+    "dino_weights_available": true,
+    "identity": false
+  },
+  "metrics": {
+    "bicycle_ap_proxy_baseline": 0.6649506878400248,
+    "bicycle_ap_proxy_candidate": 0.6415922476053801,
+    "bicycle_ap_proxy_delta": -0.023358440234644617,
+    "clean_map_proxy_baseline": 0.23619135096455937,
+    "clean_map_proxy_candidate": 0.22936367702536958,
+    "clean_map_proxy_delta": -0.006827673939189788,
+    "motorcycle_ap_proxy_baseline": 0.7104242574354698,
+    "motorcycle_ap_proxy_candidate": 0.578369194129368,
+    "vru_map_baseline": 0.5131200761220593,
+    "vru_map_candidate": 0.4562641151694516
+  },
+  "procurement": {
+    "available": true,
+    "checksum_match": true,
+    "expected_sha256": "8320e4778a7f8850d10f30d97e9138438e1851af1576fea789c43746140cc655",
+    "missing_files": [],
+    "provenance": [
+      "# DINOv2 ViT-L/14 Teacher",
+      "",
+      "Branch G Stage 2 procured the public HuggingFace checkpoint for DINOv2 ViT-L/14.",
+      "",
+      "- Source repository: `facebook/dinov2-large`",
+      "- Source URL: `https://huggingface.co/facebook/dinov2-large`",
+      "- HuggingFace commit observed during download: `47b73eefe95e8d44ec3623f8890bd894b6ea2d6c`",
+      "- Download date: 2026-05-17 UTC",
+      "- Checkpoint file: `pytorch_model.bin`",
+      "- Architecture: `Dinov2Model`, ViT-L/14, 24 layers, hidden size 1024, 16 attention heads, patch size 14",
+      "- Intended diagnostic use: frozen perspective-view feature extraction for Branch G DualViewDistill compatibility diagnostics",
+      "- License: Apache-2.0, as declared by the HuggingFace model card metadata"
+    ],
+    "pytorch_model_sha256": "8320e4778a7f8850d10f30d97e9138438e1851af1576fea789c43746140cc655",
+    "required_files": [
+      "config.json",
+      "pytorch_model.bin",
+      "CHECKSUM.txt",
+      "README.md"
+    ],
+    "teacher_dir": "/srv/nfs/shared/gnmp/RaCFormer/research/night_gen_phase1/teachers/dinov2_vitl14"
+  },
+  "repo_root": "/srv/nfs/shared/gnmp/RaCFormer",
+  "splits": {
+    "clean_val_bicycle_gt": 64,
+    "clean_val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_clean_mini_64.pkl",
+    "clean_val_samples": 64,
+    "clean_val_tokens": [
+      "fd8420396768425eabec9bdddf7e64b6",
+      "6eb8a3ff0abf4f3a9380a48f2a0b87ef",
+      "b10f0cd792b64d16a1a5e8349b20504c",
+      "163b70e627854893b88575caf85a56ea",
+      "f56a544064a548a39a81f18cc8f633c5",
+      "f286cdaef36648cba3b6a24d2178dc8a",
+      "877f55a6d8324fefb5e0f5e0bac3d7c1",
+      "49f8376cd6b34f07b20ed6d5b5b42acd",
+      "cc50000970584ba5aaf14760b1ced696",
+      "21b99febc5c14f7385e787fe81e96670",
+      "cd908fdce67249f3a8a14b987f00592e",
+      "6b9af38cbf654171870cb14b4ae89fd6",
+      "a0edf6edd121431785948038c54e036e",
+      "9281ea172d9e43528e65fca81e2006d4",
+      "6180726fc8744ea2b129ebaad6f79cee",
+      "1ac0914c98b8488cb3521efeba354496",
+      "2f5de0aeca704127925cf8490ff5a21d",
+      "e4df3ac5874d49b7a3553035cd735902",
+      "dc878ebb5b1e43eb9442d9361854613e",
+      "e617edf72860495abd928aaf57dfa5fa",
+      "7c0aa537b98344bea85226ba8148ae98",
+      "02651ca22b08484294d473d9c26cd9af",
+      "37b3d16060b442d5b6175cbebefd09a7",
+      "9c75ddb5976343c3b7b33e8148d3eeb0",
+      "5e4e25f87ec84942ac459a55fe064330",
+      "c1ab33c3994041ceae32b0fe1b51e611",
+      "23dc1b528c734082b8b3bfd9757f0eb3",
+      "3064a6b9b3f04e5d8e51eefb4be8506a",
+      "1c8ec6c1dd614d3fb8b8849dc8756a9a",
+      "57a79294b87e4b55a7bcf58f7f8c6326",
+      "3be45164a35e465cbfbc3c20ef060718",
+      "7d1d71e3ce5745f7b49b9c2e5991a45b",
+      "77f6617716654cfb8e313f0cd69e04a6",
+      "08254b97198045d98009af51d144d147",
+      "1b5a6659994e466991ba17e9998fc05e",
+      "b214d0d42c404d4f925aa56ee9cac607",
+      "fd96de719c3a4ca3869bf96166095368",
+      "d41e43b5f85b4c8298180efc246d529e",
+      "df87d08ce3644995bc7ad5721a725899",
+      "20684b77c01641e7a5ada48308a0b1e1",
+      "88a090c54cc844cc878f00d08274a683",
+      "5ee110d014374ae093565bba2e81a3fd",
+      "a6261bd83c5e4e1985012b6c6c51fce0",
+      "684acda1d78c4a959762df565cba29f5",
+      "20a871df4033487ab94d4d3b86f69af1",
+      "c51b9abd585d421b85dbf4a95eec4936",
+      "893266afc2574e58a5abd0f29b2c1faa",
+      "3eef3752ea664087a0469a01cbf738a9",
+      "5dfdf5c61f95420f89b53d65fb28e6cd",
+      "745713b3baae4ea18de5c74eb4d06bb8",
+      "d34f2eec80f54b608f9b9d0a86f103bd",
+      "f33e0c3f5d5c426593af8af1c27b68b8",
+      "52592f70fce143e59b44da5e2ad06134",
+      "261e4db3a18c4c23944f61bd6e51cf0c",
+      "5254163f8fcd4362b6019bbb88dc13ec",
+      "6269703390624957869e9bc071f16e17",
+      "dabfb5453ac2454d9806febac44df9f6",
+      "848d0535939349018c41668705f60469",
+      "b1bae3685d59491baacad9d09e03becd",
+      "a2d8604904294c2fb73648830a2604aa",
+      "114d8a1f9c4a46a5b4fec1e552027213",
+      "c393232463364bb1ab3f264b12f6694a",
+      "045ecf94b83648229500b23058af3117",
+      "6f801059ac9e4220828b59fcf10c7880"
+    ],
+    "train_bicycle_gt": 94,
+    "train_motorcycle_gt": 120,
+    "train_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_train_vru_balanced_40.pkl",
+    "train_samples": 40,
+    "train_tokens": [
+      "02470faab9fd4eebadfaaa6e6383c7ef",
+      "1e6f20a17b484f1aaae48d97fa4135f1",
+      "5cd5a563946e4654ab764834de4d6e00",
+      "437c5c33afac42aa9ad8be26c2a5f9e6",
+      "5cfe03493ad3472798c2dcc3d975a0f4",
+      "c513deb41a0d49948fd7c5e26fb3d395",
+      "8f93333cfc6945d6a785d6f592d29458",
+      "b24da578ae314a578156731031537437",
+      "8e7fc0af00004c62943ea5db12e6c3b1",
+      "d9b482ce80634d5a819aac651c1e31d3",
+      "4f9d3d17c0374ef3a7e0692b2fa7f3c2",
+      "b8e04b4ef02a4cbf832bd4d486215035",
+      "fbd0a06cbf3c406689bdbee87172f76e",
+      "1726d8492bf34087bcfe3698d50ba220",
+      "1c2286099e7242989596c17fed905491",
+      "237d7d93feb54b2389ec37a6f9740b97",
+      "279f899af99e4f86b4914e3c21dcd5ce",
+      "50467e0c7a7e4b3cb463174179e778af",
+      "44c6b7041790497fa484df7dd626799e",
+      "70c353343a364d2a96b0b56c58d76c0a",
+      "82c7a0aea90244d880b4a6970334af79",
+      "b73f8c6257c14517826e7aa2bde130b9",
+      "9b668d72e4434549bec66f4ef7323675",
+      "b87e6ca1b7a447ef92c6e36763325935",
+      "b75f3177b749411492f60c68d9507e0d",
+      "288a95d8474a41f9972ed4e071e5b32a",
+      "ca42cd67844a481f844d03a52eea61f5",
+      "3a0095caaf5b4db2aa0defac74872531",
+      "d05b34eed24c47028e36ffdf518c861c",
+      "9294e5f985f24eb68ae8dd938f6c72c8",
+      "d4dce6a964c74ec6b1f94068634bd808",
+      "9a008c40488c4a5db2e0bb9420fcc1b3",
+      "e7adaf87f503456797b6abd575b41eb6",
+      "3f40c646a2094011a700c26aac0c47bb",
+      "31f05f62c19445328b2a0b91178a9fc6",
+      "42e6cf62b3f9459788833da1437367ed",
+      "3473572ad2164fac99d08518055f719b",
+      "43fc17df385e45d6b090387fb1107a92",
+      "56c0e59731bb403daffd43d753b3380a",
+      "90678c7cde684333bbe4736c6b6555f1"
+    ],
+    "vru_val_bicycle_gt": 175,
+    "vru_val_motorcycle_gt": 283,
+    "vru_val_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/splits/rcdino_val_vru_mini_64.pkl",
+    "vru_val_samples": 64,
+    "vru_val_tokens": [
+      "0c97832dafd24fce9a0e4935664dc824",
+      "3fb21b1df59e43ab8b29d4a1ea9a0228",
+      "1220f9a205ae44418fcce91722e1e601",
+      "d25657fd31f34816920f051407c47f0f",
+      "4a1972f8731b4cdea40fc69a38a735b1",
+      "3ae0f5d24198405a82bce2964fea6f03",
+      "5973a055a6ac40e9934cfce8afa82fbe",
+      "ff6114d5779f4a058ec6c812afd56294",
+      "692096a37e2c43b3b1aaaa06b0a9666b",
+      "fef6223e08f64885af98e24ccbbcb373",
+      "6e147994a5e3493d86a928a612ff5791",
+      "5b7cb170eee6468aa1fdbd3abcf63c5a",
+      "9a1174901ea1401a9972a44616214c9b",
+      "a5afebb0aa5e4d7c95665788ce51ec58",
+      "9b3ff4bc3d1d46a19ddae004ec9c0ae5",
+      "edba7d0cf1c64d2a9c8a5ebddab507a9",
+      "ca37a1ae2ef1461d9c3dadf826e78706",
+      "048a45dd2cf54aa5808d8ccc85731d44",
+      "14d8b49233574552ae43c6f49172ea16",
+      "372725a4b00e49c78d6d0b1c4a38b6e0",
+      "2d72c60d65f84eae91bb4e5b2486b366",
+      "858a1ece22cf45d9bc71e42336604b78",
+      "3d2ce1b79d1c45e5b7db4f26f411bb86",
+      "d8251bbc2105497ab8ec80827d4429aa",
+      "575d8e57b2de436b805fd6befde3edd7",
+      "06be0e3b665c44fa8d17d9f4770bdf9c",
+      "9a7a58e327f04340ae8f9ec098a58418",
+      "28285c367b2d468f850572ddcc7efac9",
+      "1994ad9682bd4175b244af0be3e09417",
+      "609d5177362340458a3bfd4949cd1e64",
+      "802619f6fb5940608483cb29fc1beab6",
+      "61a7bd24f88a46c2963280d8b13ac675",
+      "a4be46a1e7d24df3b14fe5322c65df71",
+      "6ff9723a60bf4e14b328b3b19f04dc32",
+      "b24eea3e5ebd423fafe109de526cb484",
+      "8092909473464f80b9f791a4d31ddcb8",
+      "d02a787e344d40d78b57593a31fe1813",
+      "8573a885a7cb41d185c05029eeb9a54e",
+      "18f10858b2b1410f8485ffa35253033d",
+      "9150678870764c1b87a649a25939c61b",
+      "895d801ecf3e40019e43a0d5b80bb453",
+      "a19a80c905674faab7203a3a4e0f5246",
+      "281b92269fd648d4b52d06ac06ca6d65",
+      "b1303058fa624645b753d7283d70de45",
+      "49823b270a62468397f3265172dcc6bf",
+      "b6c420c3a5bd4a219b1cb82ee5ea0aa7",
+      "601d27a0eac84e048dc7596015eb21ea",
+      "e174cb43655f49dab7ffa27b973670e3",
+      "6252789dfad34bd6a33ba8d40be600d5",
+      "c1eed31234b94e9f8e22fbf3428b0ac2",
+      "87e772078a494d42bd34cd16172808bc",
+      "0102262f8ef34b89a1bc8390629c9390",
+      "a9ea79ca0927482ab7735941e5927d5c",
+      "0cb2a75ac2c048c3aed57f5be1d4e8e7",
+      "f40544fd4f5d42abbcfa948eeaf86850",
+      "2b8ba65cddf94fb9a8efd21e44d7cc97",
+      "08254b97198045d98009af51d144d147",
+      "2c16056f920f47d5816e462a4ae4a1c7",
+      "08ec4b7fcdb5494c8da174770c1d9245",
+      "55c258972acb4300a3a6077a531ab050",
+      "0aa136a1b6f54e8faed7e1d08ebfaa82",
+      "75f7589533b541c1aa36cff86c2b9e79",
+      "0f512a2cf5e24a84bb7a13774295ece8",
+      "93400955e1214d3daf3dca428e345777"
+    ]
+  },
+  "status": "complete",
+  "torch_version": "2.0.0",
+  "training": {
+    "elapsed_sec": 48.82018446922302,
+    "expected_train_steps": 40,
+    "runner_iter": 40,
+    "train_dataset_len": 40,
+    "work_dir": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rcdino_vru_stage2/train_work_dir"
+  },
+  "utc_finished": "20260519T125023Z",
+  "utc_started": "20260519T124518Z"
+}

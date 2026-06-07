@@ -1,0 +1,638 @@
+{
+  "architecture_change": {
+    "aux_weight_0_outputs_changed": false,
+    "boxes_or_labels_modified": false,
+    "model_source_files_modified": false,
+    "score_only_postprocess": true,
+    "weights_modified": false
+  },
+  "baseline_eval": {
+    "dataset_eval_NDS": 0.2638910993264596,
+    "dataset_eval_mAP": 0.23632903378139183,
+    "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/baseline_heldout/submission/pts_bbox/results_nusc.json",
+    "samples": 64,
+    "summary": {
+      "label_aps": {
+        "barrier": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "bicycle": {
+          "0.5": 0.045776975303998366,
+          "1.0": 0.11973323327948063,
+          "2.0": 0.31369111868873994,
+          "4.0": 0.6492931525475674
+        },
+        "bus": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "car": {
+          "0.5": 0.46175468850420504,
+          "1.0": 0.6598666299940052,
+          "2.0": 0.7580262233419216,
+          "4.0": 0.8573043846628643
+        },
+        "construction_vehicle": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "motorcycle": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "pedestrian": {
+          "0.5": 0.4877643865477063,
+          "1.0": 0.7420292836317797,
+          "2.0": 0.8180293730745465,
+          "4.0": 0.8595248833291322
+        },
+        "traffic_cone": {
+          "0.5": 0.4976835424891063,
+          "1.0": 0.6541268258325169,
+          "2.0": 0.7300291320508161,
+          "4.0": 0.7985275179772865
+        },
+        "trailer": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "truck": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        }
+      },
+      "mean_ap": 0.23632903378139183,
+      "mean_dist_aps": {
+        "barrier": 0.0,
+        "bicycle": 0.28212361995494656,
+        "bus": 0.0,
+        "car": 0.684237981625749,
+        "construction_vehicle": 0.0,
+        "motorcycle": 0.0,
+        "pedestrian": 0.7268369816457911,
+        "traffic_cone": 0.6700917545874314,
+        "trailer": 0.0,
+        "truck": 0.0
+      },
+      "nd_score": 0.2638910993264596,
+      "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/baseline_heldout/submission/pts_bbox/metrics_summary.json"
+    },
+    "tag": "baseline_heldout"
+  },
+  "calibrator": {
+    "bias": -2.973527431488037,
+    "feature_keys": [
+      "score",
+      "class_entropy",
+      "range_m",
+      "radar_count_2m_log1p",
+      "radar_min_dist_m_clipped"
+    ],
+    "loss_final": 0.1603187769651413,
+    "mean": [
+      0.148332878947258,
+      0.680506706237793,
+      33.43663024902344,
+      0.68468177318573,
+      3.6305384635925293
+    ],
+    "std": [
+      0.14994551241397858,
+      0.18421311676502228,
+      13.452226638793945,
+      0.9003427028656006,
+      3.7331881523132324
+    ],
+    "train_negatives": 8883,
+    "train_positive_rate": 0.10281790047883987,
+    "train_positives": 1018,
+    "train_predictions": 9901,
+    "train_quality_max": 0.9999337196350098,
+    "train_quality_mean": 0.1031152531504631,
+    "train_quality_min": 0.008212734013795853,
+    "type": "logistic_query_quality",
+    "weights": [
+      2.055734634399414,
+      -0.3025371730327606,
+      0.003138420172035694,
+      0.021234318614006042,
+      -0.05719689652323723
+    ]
+  },
+  "candidate_eval": {
+    "dataset_eval_NDS": 0.2641369808104795,
+    "dataset_eval_mAP": 0.23670958157943106,
+    "pred_json": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/candidate_heldout_calibrated/submission/pts_bbox/results_nusc.json",
+    "samples": 64,
+    "summary": {
+      "label_aps": {
+        "barrier": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "bicycle": {
+          "0.5": 0.04673242588906257,
+          "1.0": 0.12180716320007337,
+          "2.0": 0.32223956451395,
+          "4.0": 0.6469173235930491
+        },
+        "bus": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "car": {
+          "0.5": 0.46163339814558246,
+          "1.0": 0.6586713636293723,
+          "2.0": 0.7549705438826726,
+          "4.0": 0.8534234589427371
+        },
+        "construction_vehicle": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "motorcycle": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "pedestrian": {
+          "0.5": 0.48660643315246116,
+          "1.0": 0.7408890456327177,
+          "2.0": 0.816363856062504,
+          "4.0": 0.8582039497139095
+        },
+        "traffic_cone": {
+          "0.5": 0.5011974050898048,
+          "1.0": 0.6586231471696408,
+          "2.0": 0.7354444483842023,
+          "4.0": 0.8046597361755026
+        },
+        "trailer": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        },
+        "truck": {
+          "0.5": 0.0,
+          "1.0": 0.0,
+          "2.0": 0.0,
+          "4.0": 0.0
+        }
+      },
+      "mean_ap": 0.23670958157943106,
+      "mean_dist_aps": {
+        "barrier": 0.0,
+        "bicycle": 0.2844241192990338,
+        "bus": 0.0,
+        "car": 0.6821746911500911,
+        "construction_vehicle": 0.0,
+        "motorcycle": 0.0,
+        "pedestrian": 0.725515821140398,
+        "traffic_cone": 0.6749811842047877,
+        "trailer": 0.0,
+        "truck": 0.0
+      },
+      "nd_score": 0.2641369808104795,
+      "summary_path": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/candidate_heldout_calibrated/submission/pts_bbox/metrics_summary.json"
+    },
+    "tag": "candidate_heldout_calibrated"
+  },
+  "candidate_id": "rctrans-query-quality-calibration",
+  "cuda_available": true,
+  "cuda_device": "NVIDIA GeForce RTX 4090",
+  "cuda_max_memory_allocated_mb": 5080.63037109375,
+  "elapsed_sec": 126.37362933158875,
+  "errors": [],
+  "feature_cache": {
+    "feature_prediction_mismatches": [],
+    "heldout_inference_sec": 31.163562059402466,
+    "heldout_predictions": 12006,
+    "heldout_samples": 64,
+    "train_inference_sec": 19.68020224571228,
+    "train_predictions": 9901,
+    "train_samples": 36
+  },
+  "git_rev": "869407e",
+  "gpu_hours_charged": 0.03510378592544132,
+  "host": "livenode02",
+  "kill_checks": {
+    "clean_map_drop_le_0p005": true,
+    "heldout_ece_improves_ge_0p005": false,
+    "no_architecture_or_aux_output_change": true,
+    "target_recall_drops_le_1pp": true
+  },
+  "matching": {
+    "heldout_baseline": {
+      "ece": {
+        "bins": [
+          {
+            "accuracy_proxy": 0.013789968176996514,
+            "avg_confidence": 0.0695220420572013,
+            "bin": 0,
+            "count": 6599,
+            "hi": 0.1,
+            "lo": 0.0
+          },
+          {
+            "accuracy_proxy": 0.07278869778869779,
+            "avg_confidence": 0.13807531319448785,
+            "bin": 1,
+            "count": 3256,
+            "hi": 0.2,
+            "lo": 0.1
+          },
+          {
+            "accuracy_proxy": 0.25343189017951423,
+            "avg_confidence": 0.24109216577274117,
+            "bin": 2,
+            "count": 947,
+            "hi": 0.30000000000000004,
+            "lo": 0.2
+          },
+          {
+            "accuracy_proxy": 0.5476190476190477,
+            "avg_confidence": 0.34343319865209715,
+            "bin": 3,
+            "count": 336,
+            "hi": 0.4,
+            "lo": 0.30000000000000004
+          },
+          {
+            "accuracy_proxy": 0.8011695906432749,
+            "avg_confidence": 0.4484499788772293,
+            "bin": 4,
+            "count": 171,
+            "hi": 0.5,
+            "lo": 0.4
+          },
+          {
+            "accuracy_proxy": 0.8640776699029126,
+            "avg_confidence": 0.5485834681872025,
+            "bin": 5,
+            "count": 103,
+            "hi": 0.6000000000000001,
+            "lo": 0.5
+          },
+          {
+            "accuracy_proxy": 0.9166666666666666,
+            "avg_confidence": 0.6450638920068741,
+            "bin": 6,
+            "count": 84,
+            "hi": 0.7000000000000001,
+            "lo": 0.6000000000000001
+          },
+          {
+            "accuracy_proxy": 0.9516129032258065,
+            "avg_confidence": 0.7478225788762493,
+            "bin": 7,
+            "count": 62,
+            "hi": 0.8,
+            "lo": 0.7000000000000001
+          },
+          {
+            "accuracy_proxy": 0.9489795918367347,
+            "avg_confidence": 0.8530741187990928,
+            "bin": 8,
+            "count": 98,
+            "hi": 0.9,
+            "lo": 0.8
+          },
+          {
+            "accuracy_proxy": 0.9885714285714285,
+            "avg_confidence": 0.9569346485819136,
+            "bin": 9,
+            "count": 350,
+            "hi": 1.0,
+            "lo": 0.9
+          }
+        ],
+        "ece_proxy": 0.06741408782997331,
+        "n_predictions": 12006
+      },
+      "recall": {
+        "per_class": {
+          "bicycle": {
+            "gt_total": 64,
+            "matched": 58,
+            "recall": 0.90625
+          },
+          "construction_vehicle": {
+            "gt_total": 0,
+            "matched": 0,
+            "recall": null
+          },
+          "motorcycle": {
+            "gt_total": 0,
+            "matched": 0,
+            "recall": null
+          }
+        },
+        "target_gt_total": 64
+      }
+    },
+    "heldout_candidate": {
+      "ece": {
+        "bins": [
+          {
+            "accuracy_proxy": 0.05058329444703687,
+            "avg_confidence": 0.0077571527265700045,
+            "bin": 0,
+            "count": 10715,
+            "hi": 0.1,
+            "lo": 0.0
+          },
+          {
+            "accuracy_proxy": 0.43859649122807015,
+            "avg_confidence": 0.14366995657673148,
+            "bin": 1,
+            "count": 285,
+            "hi": 0.2,
+            "lo": 0.1
+          },
+          {
+            "accuracy_proxy": 0.5939849624060151,
+            "avg_confidence": 0.25333709914233266,
+            "bin": 2,
+            "count": 133,
+            "hi": 0.30000000000000004,
+            "lo": 0.2
+          },
+          {
+            "accuracy_proxy": 0.794392523364486,
+            "avg_confidence": 0.35005735615138883,
+            "bin": 3,
+            "count": 107,
+            "hi": 0.4,
+            "lo": 0.30000000000000004
+          },
+          {
+            "accuracy_proxy": 0.8529411764705882,
+            "avg_confidence": 0.45007119899193504,
+            "bin": 4,
+            "count": 102,
+            "hi": 0.5,
+            "lo": 0.4
+          },
+          {
+            "accuracy_proxy": 0.8780487804878049,
+            "avg_confidence": 0.5565771830479939,
+            "bin": 5,
+            "count": 82,
+            "hi": 0.6000000000000001,
+            "lo": 0.5
+          },
+          {
+            "accuracy_proxy": 0.9054054054054054,
+            "avg_confidence": 0.6479984495934746,
+            "bin": 6,
+            "count": 74,
+            "hi": 0.7000000000000001,
+            "lo": 0.6000000000000001
+          },
+          {
+            "accuracy_proxy": 0.9508196721311475,
+            "avg_confidence": 0.748726656631468,
+            "bin": 7,
+            "count": 61,
+            "hi": 0.8,
+            "lo": 0.7000000000000001
+          },
+          {
+            "accuracy_proxy": 0.9484536082474226,
+            "avg_confidence": 0.8532348630920356,
+            "bin": 8,
+            "count": 97,
+            "hi": 0.9,
+            "lo": 0.8
+          },
+          {
+            "accuracy_proxy": 0.9885714285714285,
+            "avg_confidence": 0.9568350809577393,
+            "bin": 9,
+            "count": 350,
+            "hi": 1.0,
+            "lo": 0.9
+          }
+        ],
+        "ece_proxy": 0.06288183715888883,
+        "n_predictions": 12006
+      },
+      "recall": {
+        "per_class": {
+          "bicycle": {
+            "gt_total": 64,
+            "matched": 58,
+            "recall": 0.90625
+          },
+          "construction_vehicle": {
+            "gt_total": 0,
+            "matched": 0,
+            "recall": null
+          },
+          "motorcycle": {
+            "gt_total": 0,
+            "matched": 0,
+            "recall": null
+          }
+        },
+        "target_gt_total": 64
+      }
+    },
+    "train": {
+      "positive_rate": 0.10281789718210282,
+      "predictions": 9901,
+      "recall": {
+        "per_class": {
+          "bicycle": {
+            "gt_total": 26,
+            "matched": 22,
+            "recall": 0.8461538461538461
+          },
+          "construction_vehicle": {
+            "gt_total": 95,
+            "matched": 58,
+            "recall": 0.6105263157894737
+          },
+          "motorcycle": {
+            "gt_total": 34,
+            "matched": 27,
+            "recall": 0.7941176470588235
+          }
+        },
+        "target_gt_total": 155
+      },
+      "tp_proxy": 1018
+    }
+  },
+  "metrics": {
+    "clean_map_proxy_baseline": 0.23632903378139183,
+    "clean_map_proxy_candidate": 0.23670958157943106,
+    "clean_map_proxy_delta": 0.0003805477980392269,
+    "heldout_ece_proxy_baseline": 0.06741408782997331,
+    "heldout_ece_proxy_candidate": 0.06288183715888883,
+    "heldout_ece_proxy_delta": -0.004532250671084481,
+    "heldout_ece_proxy_improvement": 0.004532250671084481,
+    "pre_registered_clean_map_gate": 0.2989905911,
+    "pre_registered_ece_gate": 0.0987496253,
+    "pre_registered_full_s0_clean_map": 0.3039905911,
+    "pre_registered_full_s0_ece_proxy": 0.1187496253,
+    "recall_deltas": {
+      "bicycle": 0.0,
+      "construction_vehicle": null,
+      "motorcycle": null
+    }
+  },
+  "repo_root": "/srv/nfs/shared/gnmp/RaCFormer",
+  "score_stats": {
+    "quality_max": 0.9999383687973022,
+    "quality_mean": 0.130473940013558,
+    "quality_min": 0.007452703081071377,
+    "score_mean_after": 0.06647015351244213,
+    "score_mean_before": 0.15861442712866802
+  },
+  "splits": {
+    "forward_sample_cap": 100,
+    "heldout_bicycle_gt": 64,
+    "heldout_construction_vehicle_gt": 0,
+    "heldout_gt_total": 1854,
+    "heldout_motorcycle_gt": 0,
+    "heldout_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/splits/rctrans_val_clean_heldout_64.pkl",
+    "heldout_samples": 64,
+    "heldout_tokens": [
+      "fd8420396768425eabec9bdddf7e64b6",
+      "6eb8a3ff0abf4f3a9380a48f2a0b87ef",
+      "b10f0cd792b64d16a1a5e8349b20504c",
+      "163b70e627854893b88575caf85a56ea",
+      "f56a544064a548a39a81f18cc8f633c5",
+      "f286cdaef36648cba3b6a24d2178dc8a",
+      "877f55a6d8324fefb5e0f5e0bac3d7c1",
+      "49f8376cd6b34f07b20ed6d5b5b42acd",
+      "cc50000970584ba5aaf14760b1ced696",
+      "21b99febc5c14f7385e787fe81e96670",
+      "cd908fdce67249f3a8a14b987f00592e",
+      "6b9af38cbf654171870cb14b4ae89fd6",
+      "a0edf6edd121431785948038c54e036e",
+      "9281ea172d9e43528e65fca81e2006d4",
+      "6180726fc8744ea2b129ebaad6f79cee",
+      "1ac0914c98b8488cb3521efeba354496",
+      "2f5de0aeca704127925cf8490ff5a21d",
+      "e4df3ac5874d49b7a3553035cd735902",
+      "dc878ebb5b1e43eb9442d9361854613e",
+      "e617edf72860495abd928aaf57dfa5fa",
+      "7c0aa537b98344bea85226ba8148ae98",
+      "02651ca22b08484294d473d9c26cd9af",
+      "37b3d16060b442d5b6175cbebefd09a7",
+      "9c75ddb5976343c3b7b33e8148d3eeb0",
+      "5e4e25f87ec84942ac459a55fe064330",
+      "c1ab33c3994041ceae32b0fe1b51e611",
+      "23dc1b528c734082b8b3bfd9757f0eb3",
+      "3064a6b9b3f04e5d8e51eefb4be8506a",
+      "1c8ec6c1dd614d3fb8b8849dc8756a9a",
+      "57a79294b87e4b55a7bcf58f7f8c6326",
+      "3be45164a35e465cbfbc3c20ef060718",
+      "7d1d71e3ce5745f7b49b9c2e5991a45b",
+      "77f6617716654cfb8e313f0cd69e04a6",
+      "08254b97198045d98009af51d144d147",
+      "1b5a6659994e466991ba17e9998fc05e",
+      "b214d0d42c404d4f925aa56ee9cac607",
+      "fd96de719c3a4ca3869bf96166095368",
+      "d41e43b5f85b4c8298180efc246d529e",
+      "df87d08ce3644995bc7ad5721a725899",
+      "20684b77c01641e7a5ada48308a0b1e1",
+      "88a090c54cc844cc878f00d08274a683",
+      "5ee110d014374ae093565bba2e81a3fd",
+      "a6261bd83c5e4e1985012b6c6c51fce0",
+      "684acda1d78c4a959762df565cba29f5",
+      "20a871df4033487ab94d4d3b86f69af1",
+      "c51b9abd585d421b85dbf4a95eec4936",
+      "893266afc2574e58a5abd0f29b2c1faa",
+      "3eef3752ea664087a0469a01cbf738a9",
+      "5dfdf5c61f95420f89b53d65fb28e6cd",
+      "745713b3baae4ea18de5c74eb4d06bb8",
+      "d34f2eec80f54b608f9b9d0a86f103bd",
+      "f33e0c3f5d5c426593af8af1c27b68b8",
+      "52592f70fce143e59b44da5e2ad06134",
+      "261e4db3a18c4c23944f61bd6e51cf0c",
+      "5254163f8fcd4362b6019bbb88dc13ec",
+      "6269703390624957869e9bc071f16e17",
+      "dabfb5453ac2454d9806febac44df9f6",
+      "848d0535939349018c41668705f60469",
+      "b1bae3685d59491baacad9d09e03becd",
+      "a2d8604904294c2fb73648830a2604aa",
+      "114d8a1f9c4a46a5b4fec1e552027213",
+      "c393232463364bb1ab3f264b12f6694a",
+      "045ecf94b83648229500b23058af3117",
+      "6f801059ac9e4220828b59fcf10c7880"
+    ],
+    "total_forward_samples": 100,
+    "train_bicycle_gt": 26,
+    "train_construction_vehicle_gt": 95,
+    "train_gt_total": 1374,
+    "train_motorcycle_gt": 34,
+    "train_pkl": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage2/splits/rctrans_train_calib_mini_36.pkl",
+    "train_samples": 36,
+    "train_tokens": [
+      "6bff5594bbaf46a18f447543a21133dc",
+      "1e6f20a17b484f1aaae48d97fa4135f1",
+      "e5ec2485e3c84ee3b4cd0e5681c7776c",
+      "437c5c33afac42aa9ad8be26c2a5f9e6",
+      "ae7ecec2843b421aa49686d753a9a9f3",
+      "0c0f4be837364fca9e34d06a4f7921ee",
+      "73376e2fc5d34c758cc155facd35fffa",
+      "303ec8a7a3ef4d2295b1d5e0ea43d551",
+      "9bbb43050f77467cb951619db05af52c",
+      "b17cc80e0ac74be4b18380f9f7985ae1",
+      "c7b9a85a08b74d0c92acea997c1e98bd",
+      "05ca24e746d24d70b26ad5e3f6ab570a",
+      "e0009ef9b3e149ec8384c7f77fc43f7a",
+      "1ab4d0d033cd47f88da2c26dd79aa9ff",
+      "f25ccf1ac11e424185fd866dc61c15ba",
+      "e66fb1dc32c94cfc9300030ea12cd376",
+      "9fcb1c201a4a464280d60f2b82610705",
+      "1b84eb9375bf4548b6a16e240f9b729f",
+      "cf9e299dbb9241669f7a36ea60339f2f",
+      "888c39cd016040cb8475b895ab2f9b98",
+      "55f52de03cd94f069bc393be63f0d69b",
+      "5cfe03493ad3472798c2dcc3d975a0f4",
+      "811d1873fa5c4d3baeba1988b4cda3f3",
+      "5cd5a563946e4654ab764834de4d6e00",
+      "ffb1fd94b579426fab0e62cbdc744ca5",
+      "c03f9999d9344a9d8627eeccadf12701",
+      "a794f438d47146d5912027e68188aaf4",
+      "b8e04b4ef02a4cbf832bd4d486215035",
+      "750c9ec2b10547599d8e4003f9a3bd19",
+      "8e7fc0af00004c62943ea5db12e6c3b1",
+      "903f32e4fd8247de8f20aa989e157b2a",
+      "391ac8da3548493eb241ea718e96491e",
+      "edac5fe98f0445688d91ad46c1bdd19b",
+      "9a8f2a0c078044eab46389415d5954fe",
+      "4fb62dc1081e467ea48a09cdd5161f91",
+      "f0ad5277a92a479b8b0e573da612e6fd"
+    ]
+  },
+  "status": "complete",
+  "torch_version": "2.0.0",
+  "utc_finished": "20260519T175146Z",
+  "utc_started": "20260519T174940Z"
+}

@@ -1,0 +1,700 @@
+{
+  "blacklist_extensions": [],
+  "candidates": [
+    {
+      "adaptation_notes": "Uses SpaRC RAR/SFF as a query-feature residual, not as a new query generator and not as BEV distillation. Targets rain because radar should retain signal when camera semantics degrade.",
+      "gpu_hours_spent": 0.005,
+      "id": "sparc-rar-rain",
+      "kill_condition": "BLOCK if aux_weight=0 is not bit-identical within max diff 1e-6, if less than 35% of rain GT objects have at least one radar point in the adaptive neighborhood, if mini rain mAP proxy fails to improve by at least 0.005, or if clean mini mAP drops by more than 0.010.",
+      "mechanism_family": "sparse-radar-camera-query-aggregation",
+      "mechanism_paragraph": "SpaRC argues that sparse radar-camera fusion can avoid dense BEV-grid rendering by aligning image semantics with radar/camera point features, then using range-adaptive radar aggregation and local self-attention around object-centric queries. Adapt this to RaCFormer as a lightweight radar-neighborhood adapter that pools radar BEV tokens around each existing polar query with a range-dependent radius and gates the decoder feature; the polar query coordinates are retained and only receive an additive residual.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "rain condition mAP >= 0.2893174671 (S0 0.2743174671 + 0.015) AND clean overall mAP >= 0.2939905911 (S0 0.3039905911 - 0.010).",
+      "scenario_target": "subset-rain",
+      "smallest_diagnostic": "On train2k, add the radar-neighborhood adapter with residual weight 0 by default, verify aux_weight=0 identity on one batch, then run <=300 optimizer steps with only the adapter and final decoder unfrozen. Evaluate a cached 64-sample rain-heavy mini split plus 64 all-condition samples; record rain mAP proxy, clean mAP proxy, adapter memory, and radar-neighborhood hit rate. Expected GPU use is <1 GPU-h.",
+      "source_citations": [
+        "arXiv:2411.19860",
+        "https://arxiv.org/abs/2411.19860"
+      ],
+      "stage": "B_blocked",
+      "title": "Range-Adaptive Radar Aggregation for Rain Robustness",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/sparc-rar-rain_DIAGNOSTIC_20260518T204634Z.md"
+    },
+    {
+      "adaptation_notes": "Rejects RayFormer query re-initialization; accepts only ray-aware feature sampling for existing RaCFormer polar queries, avoiding Branch D hard query replacement.",
+      "gpu_hours_spent": 0.188,
+      "id": "rayformer-far-ray-spread",
+      "kill_condition": "BLOCK if offset scale 0 is not identity within max diff 1e-6, if far-query pixel-collision rate is not reduced by at least 20% on the diagnostic split, if far mAP proxy fails to improve by at least 0.005, or if clean mini mAP drops by more than 0.010.",
+      "mechanism_family": "ray-centric-query-feature-sampling",
+      "mechanism_paragraph": "RayFormer identifies a failure mode where nearby 3D queries on the same camera ray sample nearly identical image pixels, producing ambiguous query features, and proposes ray-centric initialization and sampling strategies. Adapt only the sampling side: keep RaCFormer polar queries fixed, but add a ray-spread sampler that offsets image sampling points along the local epipolar/range direction for far-range queries so adjacent polar queries receive less duplicated image evidence.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "object_far_ge30m mAP >= 0.1026307261 (S0 0.0876307261 + 0.015) AND clean overall mAP >= 0.2939905911 (S0 0.3039905911 - 0.010).",
+      "scenario_target": "subset-far",
+      "smallest_diagnostic": "Instrument the current decoder to log projected image sampling coordinates for far-range matched queries, then add ray-spread offsets behind a feature flag. Run one identity batch with offset scale 0, then <=200-step mini training on far-object-enriched train2k frames and evaluate a cached far mini split; record far mAP proxy, pixel-collision rate among matched far queries, and clean mAP proxy. Expected GPU use is <1 GPU-h.",
+      "source_citations": [
+        "arXiv:2407.14923",
+        "https://arxiv.org/abs/2407.14923"
+      ],
+      "stage": "B_blocked",
+      "title": "Ray-Spread Feature Sampling for Far-Range Queries",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/rayformer-far-ray-spread_DIAGNOSTIC_20260518T212955Z.md"
+    },
+    {
+      "adaptation_notes": "Uses public image foundation features as a frozen semantic residual. It avoids the closed Branch G pattern by not distilling into all_bev_feats[:,0] and avoids LiDAR-teacher supervision entirely.",
+      "gpu_hours_spent": 0.38,
+      "id": "rcdino-vru-semantic-adapter",
+      "kill_condition": "BLOCK if DINOv2 weights cannot be available within 30 minutes, if aux_weight=0 is not identity within max diff 1e-6, if bicycle AP proxy fails to improve by at least 0.010 on the mini split, or if clean mini mAP drops by more than 0.010.",
+      "mechanism_family": "foundation-feature-semantic-adapter",
+      "mechanism_paragraph": "RCDINO reports that radar-camera detection can improve by fusing semantically rich DINOv2 visual features into the visual backbone while preserving compatibility with the baseline architecture. Adapt this as a frozen-DINO, low-rank semantic residual on image features before RaCFormer query sampling, with class-balanced loss emphasis for small vulnerable-road-user classes; no teacher boxes or query replacement are used.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "bicycle mean_dist_AP >= 0.3186696856 (S0 0.2886696856 + 0.030) AND clean overall mAP >= 0.2939905911 (S0 0.3039905911 - 0.010).",
+      "scenario_target": "class-bicycle",
+      "smallest_diagnostic": "Procure or reuse public DINOv2 weights within the 30-minute artifact budget, freeze DINO, add a low-rank adapter with residual weight 0, and verify one-batch identity. Run <=200 train2k optimizer steps with class-balanced sampling for bicycle/motorcycle frames and evaluate a 64-sample VRU mini split plus 64 clean samples; record bicycle AP proxy and clean mAP proxy. Expected GPU use is <1 GPU-h.",
+      "source_citations": [
+        "arXiv:2508.15353",
+        "https://arxiv.org/abs/2508.15353"
+      ],
+      "stage": "B_blocked",
+      "title": "Frozen DINOv2 Semantic Adapter for Bicycle AP",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/rcdino-vru-semantic-adapter_DIAGNOSTIC_20260519T125158Z.md"
+    },
+    {
+      "adaptation_notes": "Adapts CorrBEV prototypes to query features only. It does not require BEV-feature distillation, a LiDAR teacher, or a replacement query set.",
+      "gpu_hours_spent": 0.121,
+      "id": "corrbev-prototype-cv",
+      "kill_condition": "BLOCK if fewer than 25 positive construction_vehicle instances are available for the diagnostic, if residual weight 0 is not identity within max diff 1e-6, if construction_vehicle AP proxy fails to improve by at least 0.010, or if clean mini mAP drops by more than 0.010.",
+      "mechanism_family": "visual-language-prototype-query-conditioning",
+      "mechanism_paragraph": "CorrBEV introduces auxiliary visual and language prototypes and depth-wise correlation to enhance weakened object features, with robustness gains beyond its occlusion motivation including inclement weather. Adapt the prototype idea to RaCFormer decoder features rather than BEV maps: build construction-vehicle visual/text prototypes, correlate them with existing query features, and add a small class-conditional residual plus contrastive regularizer for construction_vehicle queries.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "construction_vehicle mean_dist_AP >= 0.1121073377 (S0 0.0821073377 + 0.030) AND clean overall mAP >= 0.2939905911 (S0 0.3039905911 - 0.010).",
+      "scenario_target": "class-cv",
+      "smallest_diagnostic": "Create prototypes from existing train2k construction_vehicle crops/features and a text embedding fallback, then fit only the prototype projector/residual for <=300 optimizer steps. Verify residual weight 0 identity, then evaluate construction_vehicle AP proxy on all construction_vehicle-containing mini-val frames and clean mini mAP on 64 all-condition frames. Expected GPU use is <1 GPU-h.",
+      "source_citations": [
+        "CVPR 2025 CorrBEV",
+        "https://openaccess.thecvf.com/content/CVPR2025/html/Xue_CorrBEV_Multi-View_3D_Object_Detection_by_Correlation_Learning_with_Multi-modal_CVPR_2025_paper.html"
+      ],
+      "stage": "B_blocked",
+      "title": "Prototype Correlation for Construction-Vehicle Semantics",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/corrbev-prototype-cv_DIAGNOSTIC_20260519T164915Z.md"
+    },
+    {
+      "adaptation_notes": "Uses RCTrans pruning/quality as post-decoder calibration, not as query pruning that changes the active query set during training. This keeps Branch D and LiDAR-teacher closures avoided.",
+      "authorisation_note": "User-authorised Phase D promotion 2026-05-19 despite proxy-gate miss (-0.0045 vs -0.005 ECE); rationale: identity-clean by construction, Stage 3B cost ~3-4 GPU-h (calibrator-only), full-val eval may resolve mini-eval noise band.",
+      "gpu_hours_spent": 3.9208,
+      "id": "rctrans-query-quality-calibration",
+      "kill_condition": "BLOCK if held-out ECE proxy does not improve by at least 0.005 absolute, if clean mini mAP drops by more than 0.005, if per-class recall for bicycle/motorcycle/construction_vehicle drops by more than 1.0 pp, or if the calibrator needs architectural changes that alter aux_weight=0 outputs.",
+      "mechanism_family": "query-quality-calibration-and-pruning",
+      "mechanism_paragraph": "RCTrans uses radar densification, sequential decoding, and a pruning training strategy to improve radar-camera query distinctiveness while reducing interference from empty/noisy radar tokens. Adapt this as a RaCFormer query-quality head trained to predict matched IoU/TP reliability from decoder features and radar support, then multiply class confidence by calibrated query quality at inference.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "overall ECE proxy <= 0.0987496253 (S0 0.1187496253 - 0.020) AND clean overall mAP >= 0.2989905911 (S0 0.3039905911 - 0.005).",
+      "scenario_target": "calibration",
+      "smallest_diagnostic": "Using cached S0 predictions and ground-truth matching on train/val mini splits, fit a lightweight query-quality calibrator from decoder score, class entropy, range, and radar-support features; if decoder features are unavailable, run <=100 forward-only samples to cache them. Re-score predictions on a held-out mini split and compute the same ECE proxy plus clean mini mAP. Expected GPU use is <=0.3 GPU-h, and the CPU-only fallback is acceptable if cached features suffice.",
+      "source_citations": [
+        "arXiv:2412.12799",
+        "https://arxiv.org/abs/2412.12799"
+      ],
+      "stage": "D_fail",
+      "stage3a_smoke_artifact": "research/paper_goal_20260518/candidates/rctrans-query-quality-calibration_SMOKE_20260519T214208Z.md",
+      "stage3a_smoke_evidence": "research/paper_goal_20260518/rctrans_calib_stage3a_smoke_evidence.json",
+      "stage3a_smoke_gpu_hours_charged": 0.006668940517637465,
+      "stage3a_smoke_job_id": "1473",
+      "stage3a_smoke_status": "PASS",
+      "stage3b_budget_gpu_hours_cap": 4.0,
+      "stage3b_budget_ok": true,
+      "stage3b_calibrator": {
+        "feature_keys": [
+          "score",
+          "class_entropy",
+          "range_m",
+          "radar_count_2m_log1p",
+          "radar_min_dist_m_clipped"
+        ],
+        "hard_pathology": null,
+        "learning_rate": 0.05,
+        "loss_final": 0.13681364059448242,
+        "train_negatives": 4916921,
+        "train_positive_rate": 0.13870792090892792,
+        "train_positives": 791852,
+        "train_predictions": 5708773,
+        "training_iters": 500,
+        "type": "logistic_query_quality"
+      },
+      "stage3b_completed_at": "20260520T014613Z",
+      "stage3b_evidence": "research/paper_goal_20260518/rctrans_calib_stage3b_evidence.json",
+      "stage3b_failure_mode_artifact": null,
+      "stage3b_feature_cache": {
+        "feature_prediction_mismatches": [],
+        "train_cache": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage3b/train_query_quality_features.npz",
+        "train_predictions": 5708773,
+        "train_samples": 28130,
+        "val_cache": "/srv/nfs/shared/gnmp/RaCFormer/research/paper_goal_20260518/rctrans_calib_stage3b/val_query_quality_features.npz",
+        "val_predictions": 1168135,
+        "val_samples": 6019
+      },
+      "stage3b_full_run_gpu_hours_charged": 3.3801724034547806,
+      "stage3b_gpu_hours_charged": 3.407176,
+      "stage3b_halt": "HALT for user review after sanity verdict revision; do not advance to Phase E.",
+      "stage3b_job_id": "1477",
+      "stage3b_metrics": {
+        "ece_delta_gate_pass_minus_0p020": true,
+        "fullval_ece_delta_pp": -3.0224645757715036,
+        "fullval_ece_proxy_baseline_fresh_same_matching": 0.07760817409995023,
+        "fullval_ece_proxy_candidate_same_matching": 0.04738352834223519,
+        "fullval_ece_proxy_delta_candidate_minus_fresh_baseline": -0.030224645757715038,
+        "fullval_map_baseline_fresh_same_pipeline": 0.5296299576513736,
+        "fullval_map_candidate_same_pipeline": 0.5295144765337056,
+        "fullval_map_delta_candidate_minus_fresh_baseline": -0.00011548111766790381,
+        "fullval_map_delta_pp": -0.011548111766790381,
+        "map_no_change_gate_fail_lt_1pp": true,
+        "revised_verdict": "FAIL_GATE_MISS",
+        "revision_reason": "mAP-no-change-from-calibrator"
+      },
+      "stage3b_metrics_initial_reported": {
+        "fullval_ece_proxy_baseline_fresh": 0.07761145178277491,
+        "fullval_ece_proxy_baseline_s0": 0.11874962530039652,
+        "fullval_ece_proxy_candidate": 0.04738352834223519,
+        "fullval_ece_proxy_delta_vs_fresh_baseline": -0.03022792344053972,
+        "fullval_ece_proxy_delta_vs_s0": -0.07136609695816133,
+        "fullval_map_baseline_s0": 0.30399059113285365,
+        "fullval_map_candidate": 0.5295144765337056,
+        "fullval_map_delta_vs_s0": 0.225523885400852,
+        "hard_map_floor": 0.2789905911328536,
+        "pre_registered_ece_gate": 0.09874962530039652,
+        "pre_registered_map_gate": 0.29899059113285364,
+        "recall_deltas": {
+          "bicycle": 0.0,
+          "construction_vehicle": 0.0,
+          "motorcycle": 0.0
+        }
+      },
+      "stage3b_post_eval_checks": {
+        "auto_kill_nonfinite_or_monotonic_or_oom": false,
+        "formal_gate": true,
+        "post_eval_hard_kill": false,
+        "stage3b_training_semantics": "post_hoc_calibrator_only_no_racformer_epoch_training",
+        "stage3c_started": false
+      },
+      "stage3b_post_eval_checks_revised": {
+        "formal_ece_delta_gate": true,
+        "formal_gate": false,
+        "map_no_change_sanity_gate": false,
+        "post_eval_hard_kill": false,
+        "stage3c_started": false
+      },
+      "stage3b_preflight_success_gpu_hours_charged": 0.027003278798527187,
+      "stage3b_result_artifact": "research/paper_goal_20260518/candidates/rctrans-query-quality-calibration_RESULT_STAGE3B_20260520T014613Z.md",
+      "stage3b_sanity_artifact": "research/paper_goal_20260518/candidates/rctrans-query-quality-calibration_SANITY_20260520T022417Z.md",
+      "stage3b_sanity_budget_gpu_hours_cap": 1.0,
+      "stage3b_sanity_budget_ok": true,
+      "stage3b_sanity_completed_at": "20260520T022417Z",
+      "stage3b_sanity_evidence": "research/paper_goal_20260518/rctrans_calib_stage3b_sanity_evidence.json",
+      "stage3b_sanity_gpu_hours_charged": 0.47062405612733627,
+      "stage3b_sanity_job_id": "1478",
+      "stage3b_semantics": "post_hoc_calibrator_full_train_full_val_no_racformer_12epoch_training",
+      "stage3b_stage_initial_reported": "D_pass",
+      "stage3b_started": true,
+      "stage3b_started_at": "20260519T221800Z",
+      "stage3b_status": "complete_revised_by_sanity",
+      "stage3b_verdict": "FAIL_GATE_MISS",
+      "stage3b_verdict_initial_reported": "PASS",
+      "stage3b_verdict_revision_reason": "mAP-no-change-from-calibrator",
+      "stage3c_completed_at": "20260520T114846Z",
+      "stage3c_decision": "FAIL. Radar-support feature removal did not increase ECE by the required 0.005 absolute, so archive as mechanism_null_radar_features and pivot to Phase TERMINAL.",
+      "stage3c_evidence": "research/paper_goal_20260518/rctrans_calib_stage3c_evidence.json",
+      "stage3c_failure_archive": "mechanism_null_radar_features",
+      "stage3c_gpu_hours_charged": 0.0428245335817337,
+      "stage3c_job_id": "1480",
+      "stage3c_metrics": {
+        "ablation_ece_increase_vs_full_seed0": -2.459390965121877e-05,
+        "ablation_radar_features_pass": false,
+        "both_seeds_gate_pass": true,
+        "condition_ece_seed0": {
+          "day": 0.04866982175782501,
+          "night": 0.018919088122320262,
+          "rain": 0.04843175980470925
+        },
+        "condition_ece_seed20260502": {
+          "day": 0.04867347095559284,
+          "night": 0.01891960897545828,
+          "rain": 0.048436258685720206
+        },
+        "ece_gate": 0.05760817409995023,
+        "fresh_baseline_ece": 0.07760817409995023,
+        "fresh_baseline_map": 0.5296299576513736,
+        "map_gate": 0.5246299576513735,
+        "seed0_full_feature_ece": 0.04738352833623205,
+        "seed0_full_feature_map": 0.5295144765337056,
+        "seed0_no_radar_ablation_ece": 0.04735893442658083,
+        "seed20260502_full_feature_ece": 0.047387191548707824,
+        "seed20260502_full_feature_map": 0.5295178850325581,
+        "seed_to_seed_ece_abs_delta": 3.663212475774058e-06,
+        "seed_to_seed_ece_delta_pass": true
+      },
+      "stage3c_post_fail_next_phase": "TERMINAL",
+      "stage3c_result_artifact": "research/paper_goal_20260518/candidates/rctrans-query-quality-calibration_RESULT_STAGE3C_20260520T114846Z.md",
+      "stage3c_semantics": "post_hoc_calibrator_cache_only_no_feature_reextraction",
+      "stage3c_started": true,
+      "stage3c_started_at": "20260520T114618Z",
+      "stage3c_status": "complete_failed_mechanism_null_radar_features",
+      "stage3c_verdict": "FAIL_mechanism_null_radar_features",
+      "title": "Sequential Query Quality Head for Calibration",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/rctrans-query-quality-calibration_RESULT_STAGE3C_20260520T114846Z.md"
+    },
+    {
+      "adaptation_notes": "Keeps the existing RaCFormer query set and uses temporal consistency only as an auxiliary loss. The target is temporal-night because the gate explicitly rewards night gains without day degradation.",
+      "gpu_hours_spent": 0.115,
+      "id": "temporal-cue-night-consistency",
+      "kill_condition": "BLOCK if less than 80% of selected samples have valid adjacent-frame metadata, if loss weight 0 is not identity within max diff 1e-6, if night mini mAP proxy fails to improve by at least 0.007, or if day mini mAP proxy drops by more than 0.005.",
+      "mechanism_family": "temporal-query-consistency",
+      "mechanism_paragraph": "The CVPR 2025 temporal-cues framework trains multi-view 3D detectors with forward/backward temporal predictions, 3D tracking infill, auxiliary 2D filtering, and object-query conditioned masked reconstruction. Adapt the low-risk subset to RaCFormer: use adjacent frames to impose ego-motion-warped consistency on existing query predictions and add a query-conditioned masked image-feature reconstruction loss, with no new temporal query replacement.",
+      "phase_a_closed_family_check": {
+        "blacklist_extensions": "pass: state.blacklist_extensions is empty at Phase A generation time.",
+        "camera_bev_substrate_aux_distillation": "pass: does not distil auxiliary supervision into all_bev_feats[:,0] or an equivalent camera-BEV channel.",
+        "fused_bev_tensor_distillation": "pass: no student-side fused [B,C,H,W] BEV distillation target is introduced.",
+        "lidar_teacher_foreground_positional_kd": "pass: no LiDAR-teacher box supervision on polar cells.",
+        "polar_prior_corruption_hard_query_replacement": "pass: keeps RaCFormer polar queries as the active query set; no top-k, 2D, ray, radar, or prototype query replacement.",
+        "sparse_topk_lidar_teacher_hungarian": "pass: no LiDAR teacher, top-K teacher decoder queries, or teacher-student Hungarian matching."
+      },
+      "pre_registered_gate": "night condition mAP >= 0.1687749875 (S0 0.1487749875 + 0.020) AND day condition mAP >= 0.3102649818 (S0 0.3152649818 - 0.005).",
+      "scenario_target": "temporal-night",
+      "smallest_diagnostic": "On a sequence-aware train2k mini split, verify ego-motion metadata coverage, add temporal-consistency and masked-reconstruction losses with weight 0 identity, then run <=300 optimizer steps on short adjacent-frame clips. Evaluate night mini mAP proxy and day mini mAP proxy using fixed condition splits. Expected GPU use is <1 GPU-h.",
+      "source_citations": [
+        "CVPR 2025 Leveraging Temporal Cues",
+        "https://openaccess.thecvf.com/content/CVPR2025/html/Park_Leveraging_Temporal_Cues_for_Semi-Supervised_Multi-View_3D_Object_Detection_CVPR_2025_paper.html"
+      ],
+      "stage": "B_blocked",
+      "title": "Forward-Backward Temporal Query Consistency for Night",
+      "verdict_artifact": "research/paper_goal_20260518/candidates/temporal-cue-night-consistency_DIAGNOSTIC_20260519T205323Z.md"
+    }
+  ],
+  "cumulative_gpu_hours": 4.772625,
+  "cumulative_wall_clock_hours": 5.117625,
+  "current_candidate_id": "rctrans-query-quality-calibration",
+  "current_phase": "TERMINAL",
+  "halt_reasons_log": [
+    {
+      "phase": "A",
+      "reason": "Phase 0 bootstrap complete; halted before Phase A candidate generation per user instruction.",
+      "timestamp": "20260518T201353Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Phase A generated 6 A_proposed candidates and halted for user review before Phase B, per v4 \u00a76.",
+      "timestamp": "20260518T203011Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate sparc-rar-rain; marked B_blocked and halted before screening additional candidates per v4 \u00a77.",
+      "timestamp": "20260518T204634Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate rayformer-far-ray-spread; marked B_blocked after measured identity, collision, and far-mAP kill checks, then halted before screening additional candidates per v4 \u00a77.",
+      "timestamp": "20260518T212955Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate rcdino-vru-semantic-adapter; marked B_blocked after measured bicycle-AP mini-eval kill check, then halted before screening additional candidates per v4 \u00a77.",
+      "timestamp": "20260519T125158Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate corrbev-prototype-cv; marked B_blocked after measured construction_vehicle AP mini-eval kill check, then halted before screening additional candidates per v4 \u00a77.",
+      "timestamp": "20260519T164915Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate rctrans-query-quality-calibration; marked B_blocked after measured held-out ECE improvement missed the +0.005 absolute kill threshold, then halted before screening additional candidates per v4 \u00a77.",
+      "timestamp": "20260519T175146Z"
+    },
+    {
+      "phase": "B",
+      "reason": "Screened one Phase B candidate temporal-cue-night-consistency; marked B_blocked after measured zero-weight identity, night mini-mAP, and day mini-mAP kill checks, then halted before any Phase C or terminal report work per v4 \u00a77.",
+      "timestamp": "20260519T205323Z"
+    },
+    {
+      "phase": "C",
+      "reason": "User override: authorised rctrans-query-quality-calibration for Phase D despite proxy near-miss.",
+      "timestamp": "2026-05-19T21:19:10Z"
+    },
+    {
+      "phase": "D",
+      "reason": "Stage 3A smoke completed for rctrans-query-quality-calibration; identity, gradient, memory, and score-only post-hoc checks PASS. Halted before Stage 3B per user instruction.",
+      "timestamp": "20260519T214208Z"
+    },
+    {
+      "phase": "D",
+      "reason": "Stage 3B completed for rctrans-query-quality-calibration with verdict PASS; formal ECE and mAP gates passed. Halted before Phase E pending user authorisation.",
+      "timestamp": "20260520T014613Z"
+    },
+    {
+      "phase": "D",
+      "reason": "Stage 3B sanity check reran baseline S0 scores through the same fresh eval pipeline; revised rctrans-query-quality-calibration from D_pass/PASS to D_fail/FAIL_GATE_MISS because real mAP delta was below 1.0 pp, while ECE delta still passed. Halted before Phase E for user review.",
+      "timestamp": "20260520T022417Z"
+    },
+    {
+      "phase": "E",
+      "reason": "Stage 3C completed for rctrans-query-quality-calibration under post-hoc calibrator semantics. Both full-feature seeds passed the adapted ECE/mAP gate and seed-to-seed ECE was stable, but the radar-off ablation did not increase ECE by >=0.005; archived as mechanism_null_radar_features and pivoted to Phase TERMINAL. FINAL_REPORT_v4.md not written.",
+      "timestamp": "20260520T114846Z"
+    }
+  ],
+  "phase0_bootstrap": {
+    "candidate_generation_performed": false,
+    "completed_at_utc": "20260518T201353Z",
+    "no_gpu": true,
+    "notes": [
+      "Requested file audit_stage1b/per_class_ap.csv is absent; used the Stage 1B deliverable audit_stage1b/per_class_ap_breakdown.csv, which contains S0 per-class AP rows.",
+      "FPS, radar-drop, camera-drop, and occluded-object baselines were not measured because no matching baseline artifact was found and Phase 0 was constrained to no GPU."
+    ]
+  },
+  "phase_a_bootstrap": {
+    "candidate_count": 6,
+    "candidate_generation_performed": true,
+    "completed_at_utc": "20260518T203011Z",
+    "diagnostics_or_training_performed": false,
+    "gpu_used": false,
+    "halt": "HALT before Phase B screening; user review required."
+  },
+  "phase_a_search_log": {
+    "accepted_candidate_ids": [
+      "sparc-rar-rain",
+      "rayformer-far-ray-spread",
+      "rcdino-vru-semantic-adapter",
+      "corrbev-prototype-cv",
+      "rctrans-query-quality-calibration",
+      "temporal-cue-night-consistency"
+    ],
+    "allowed_scenarios": [
+      "calibration",
+      "class-bicycle",
+      "class-cv",
+      "class-motorcycle",
+      "subset-far",
+      "subset-rain",
+      "temporal-night"
+    ],
+    "completed_at_utc": "20260518T203011Z",
+    "no_gpu": true,
+    "rejections": [
+      {
+        "id": "qaf2d-hard-query-anchors",
+        "reason": "Rejected as a literal implementation because it constructs 3D query anchors from 2D detections and uses them as queries, matching the closed hard-query-replacement family.",
+        "source": "CVPR 2024 QAF2D / arXiv:2403.06093"
+      },
+      {
+        "id": "harmondistill-attention-field-kd",
+        "reason": "Rejected because its attention-field knowledge distillation and BEV-perspective local alignment are too close to the closed BEV/KD substrate families for v4 Phase A.",
+        "source": "CVPRW 2025 Harmonizing Attention Fields with Knowledge Distillation"
+      },
+      {
+        "id": "ocrfdet-voxel-radiance-field",
+        "reason": "Rejected because it depends on voxel/BEV radiance-field enhancement and height-aware BEV opacity attention, which is a structural mismatch for the allowed RaCFormer query-only v4 search.",
+        "source": "ICCV 2025 OcRFDet / arXiv:2506.23565"
+      }
+    ],
+    "sources_surveyed": [
+      "arXiv cs.CV/cs.LG/cs.RO 2024-2026 search for radar-camera and query-based nuScenes 3D detection",
+      "CVPR 2024/2025 Open Access 3D object detection papers",
+      "ICCV 2025 Open Access 3D object detection papers"
+    ]
+  },
+  "s0_baselines": {
+    "available_scenarios": [
+      "class-bicycle",
+      "class-motorcycle",
+      "class-cv",
+      "subset-rain",
+      "subset-far",
+      "calibration",
+      "temporal-night"
+    ],
+    "clean_overall": {
+      "NDS": 0.3697754271651431,
+      "mAP": 0.30399059113285365,
+      "source_file": "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv",
+      "subset_key": "all_samples"
+    },
+    "condition_mAP_s0": {
+      "day": 0.31526498181390583,
+      "night": 0.14877498753481205,
+      "overall": 0.30399059113285365,
+      "rain": 0.27431746709546545
+    },
+    "phase_a_skip_rule": "Phase A must not assign candidates to scenarios whose status is unavailable.",
+    "scenarios": {
+      "calibration": {
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.005,
+          "overall_floor_fraction": 0.29899059113285364,
+          "target_ceiling_fraction": 0.09874962530039652,
+          "target_delta_max_fraction": -0.02
+        },
+        "lower_is_better": true,
+        "raw_calibration": {
+          "ece_proxy": 0.11874962530039652,
+          "n_predictions": 1289551
+        },
+        "s0_value_fraction": 0.11874962530039652,
+        "scenario": "Expected Calibration Error",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/calibration_reliability.csv",
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "status": "available",
+        "target_metric": "overall.ece_proxy"
+      },
+      "class-bicycle": {
+        "class_name": "bicycle",
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.01,
+          "overall_floor_fraction": 0.29399059113285364,
+          "target_delta_min_fraction": 0.03,
+          "target_floor_fraction": 0.31866968561017794
+        },
+        "raw_ap": {
+          "AP_0.5": 0.09009415934850397,
+          "AP_1.0": 0.25688671569619653,
+          "AP_2.0": 0.37851773020811447,
+          "AP_4.0": 0.429180137187897,
+          "mean_dist_AP": 0.288669685610178
+        },
+        "s0_value_fraction": 0.288669685610178,
+        "scenario": "Bicycle class AP",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv",
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "source_note": "Requested file audit_stage1b/per_class_ap.csv is absent; used the Stage 1B deliverable audit_stage1b/per_class_ap_breakdown.csv, which contains S0 per-class AP rows.",
+        "status": "available",
+        "target_metric": "bicycle.mean_dist_AP.overall"
+      },
+      "class-cv": {
+        "class_name": "construction_vehicle",
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.01,
+          "overall_floor_fraction": 0.29399059113285364,
+          "target_delta_min_fraction": 0.03,
+          "target_floor_fraction": 0.11210733772869144
+        },
+        "raw_ap": {
+          "AP_0.5": 0.00020843902053349042,
+          "AP_1.0": 0.03909538635136607,
+          "AP_2.0": 0.12749439253218806,
+          "AP_4.0": 0.16163113301067816,
+          "mean_dist_AP": 0.08210733772869144
+        },
+        "s0_value_fraction": 0.08210733772869144,
+        "scenario": "Construction_vehicle AP",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv",
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "source_note": "Requested file audit_stage1b/per_class_ap.csv is absent; used the Stage 1B deliverable audit_stage1b/per_class_ap_breakdown.csv, which contains S0 per-class AP rows.",
+        "status": "available",
+        "target_metric": "construction_vehicle.mean_dist_AP.overall"
+      },
+      "class-motorcycle": {
+        "class_name": "motorcycle",
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.01,
+          "overall_floor_fraction": 0.29399059113285364,
+          "target_delta_min_fraction": 0.03,
+          "target_floor_fraction": 0.3696619030928796
+        },
+        "raw_ap": {
+          "AP_0.5": 0.11822391339023139,
+          "AP_1.0": 0.33424162357184933,
+          "AP_2.0": 0.42485400217312724,
+          "AP_4.0": 0.48132807323631027,
+          "mean_dist_AP": 0.3396619030928796
+        },
+        "s0_value_fraction": 0.3396619030928796,
+        "scenario": "Motorcycle class AP",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv",
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "source_note": "Requested file audit_stage1b/per_class_ap.csv is absent; used the Stage 1B deliverable audit_stage1b/per_class_ap_breakdown.csv, which contains S0 per-class AP rows.",
+        "status": "available",
+        "target_metric": "motorcycle.mean_dist_AP.overall"
+      },
+      "efficiency": {
+        "reason": "No FPS/throughput measurement file was found under the v4/audit research artifacts; measuring S0 FPS requires runtime profiling and was not run under the no-GPU constraint.",
+        "scenario": "Throughput (FPS)",
+        "source_files_checked": [],
+        "status": "unavailable",
+        "target_metric": "FPS"
+      },
+      "robust-camera-drop": {
+        "reason": "No clean S0 simulated camera-drop baseline file was found. Existing camdrop rows are trained variants, not an S0 drop measurement; no-GPU Phase 0 did not run new measurement.",
+        "scenario": "mAP under simulated camera drop",
+        "source_files_checked": [
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "status": "unavailable",
+        "target_metric": "camera_drop_mAP"
+      },
+      "robust-radar-drop": {
+        "reason": "No S0 radar-drop baseline file or measurement artifact was found; measuring it requires a new sensor-drop evaluation/inference path, which is outside the no-GPU Phase 0 constraint.",
+        "scenario": "mAP under simulated radar drop",
+        "source_files_checked": [
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "status": "unavailable",
+        "target_metric": "radar_drop_mAP"
+      },
+      "subset-far": {
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.01,
+          "overall_floor_fraction": 0.29399059113285364,
+          "target_delta_min_fraction": 0.015,
+          "target_floor_fraction": 0.10263072608031575
+        },
+        "raw_subset": {
+          "NDS": 0.2229936497434683,
+          "mAP": 0.08763072608031575,
+          "metric_source": "official_nuscenes_cached",
+          "n_eval_tokens": 6019,
+          "n_gt_boxes": 35025,
+          "n_pred_boxes": 574616
+        },
+        "s0_value_fraction": 0.08763072608031575,
+        "scenario": "Far-range (>30m) subset mAP",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "status": "available",
+        "subset_key": "object_far_ge30m",
+        "target_metric": "object_far_ge30m.mAP"
+      },
+      "subset-occluded": {
+        "reason": "No S0 occluded subset row exists in per_subset_reeval_all_variants.csv and no occlusion baseline artifact was found locally; no-GPU Phase 0 did not run new measurement.",
+        "scenario": "Occluded objects subset",
+        "source_files_checked": [
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "status": "unavailable",
+        "target_metric": "occluded_mAP"
+      },
+      "subset-rain": {
+        "gate": {
+          "clean_overall_mAP_s0": 0.30399059113285365,
+          "overall_delta_min_fraction": -0.01,
+          "overall_floor_fraction": 0.29399059113285364,
+          "target_delta_min_fraction": 0.015,
+          "target_floor_fraction": 0.28931746709546546
+        },
+        "n_condition_classes": 10,
+        "s0_value_fraction": 0.27431746709546545,
+        "scenario": "Rain subset mAP",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv",
+          "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv"
+        ],
+        "source_note": "per_subset_reeval_all_variants.csv has no S0 rain subset row; used exact S0 rain-condition mean of per-class mean_dist_AP from per_class_ap_breakdown.csv.",
+        "status": "available",
+        "target_metric": "rain.condition_mAP"
+      },
+      "temporal-night": {
+        "day_mAP_s0": 0.31526498181390583,
+        "gate": {
+          "day_delta_min_fraction": -0.005,
+          "day_floor_fraction": 0.3102649818139058,
+          "day_mAP_s0": 0.31526498181390583,
+          "night_delta_min_fraction": 0.02,
+          "night_floor_fraction": 0.16877498753481204
+        },
+        "n_condition_classes": 10,
+        "s0_value_fraction": 0.14877498753481205,
+        "scenario": "Night mAP with temporal fusion",
+        "source_files": [
+          "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv"
+        ],
+        "source_note": "Existing Stage 1B condition evaluation encoded as S0 per-class AP by condition.",
+        "status": "available",
+        "target_metric": "night.condition_mAP"
+      }
+    },
+    "schema_version": "s0-v1",
+    "source_inventory": {
+      "calibration_files": [
+        "research/paper_goal_20260516/audit_stage1b/calibration_reliability.csv"
+      ],
+      "fps_measurement_files": [],
+      "per_class_requested": {
+        "exists": false,
+        "path": "research/paper_goal_20260516/audit_stage1b/per_class_ap.csv"
+      },
+      "per_class_used": {
+        "exists": true,
+        "note": "Requested file audit_stage1b/per_class_ap.csv is absent; used the Stage 1B deliverable audit_stage1b/per_class_ap_breakdown.csv, which contains S0 per-class AP rows.",
+        "path": "research/paper_goal_20260516/audit_stage1b/per_class_ap_breakdown.csv"
+      },
+      "per_subset": {
+        "exists": true,
+        "path": "research/paper_goal_20260516/audit_stage1b/per_subset_reeval_all_variants.csv",
+        "s0_subset_keys": [
+          "all_samples",
+          "dynamic_radar_supported_any_sample",
+          "long_range_any_ge30_sample",
+          "long_range_any_ge40_sample",
+          "moving_any_gt_speed_gt_0p5_sample",
+          "object_far_ge30m",
+          "object_far_ge40m",
+          "object_near_lt30m",
+          "radar_rich_top_quartile_sample",
+          "radar_supported_any_sample"
+        ]
+      }
+    },
+    "unavailable_scenarios": [
+      "subset-occluded",
+      "robust-radar-drop",
+      "robust-camera-drop",
+      "efficiency"
+    ],
+    "units": "Fractions for AP/mAP/ECE values; percentage-point gates are represented as fractional deltas, e.g. 0.03 = 3.0 pp."
+  },
+  "schema_version": "v4-1",
+  "session_id": "20260518T201353Z"
+}
