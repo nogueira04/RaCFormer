@@ -463,6 +463,98 @@ class RaCGlobalRotScaleTransImage(object):
             for i in range(len(results['radar_points'])):
                 results['radar_points'][i].scale(scale_ratio)
 
+
+@PIPELINES.register_module()
+class CalibrationPerturbLidar2Img(object):
+    """Apply a controlled extrinsic perturbation to lidar-to-image projection matrices."""
+
+    def __init__(
+        self,
+        prob=1.0,
+        roll_range_deg=(0.0, 0.0),
+        pitch_range_deg=(0.0, 0.0),
+        yaw_range_deg=(0.0, 0.0),
+        trans_range_m=((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)),
+        fixed_roll_deg=None,
+        fixed_pitch_deg=None,
+        fixed_yaw_deg=None,
+        fixed_trans_m=None,
+    ):
+        self.prob = float(prob)
+        self.roll_range_deg = self._as_range(roll_range_deg)
+        self.pitch_range_deg = self._as_range(pitch_range_deg)
+        self.yaw_range_deg = self._as_range(yaw_range_deg)
+        self.trans_range_m = tuple(self._as_range(r) for r in trans_range_m)
+        self.fixed_roll_deg = fixed_roll_deg
+        self.fixed_pitch_deg = fixed_pitch_deg
+        self.fixed_yaw_deg = fixed_yaw_deg
+        self.fixed_trans_m = fixed_trans_m
+
+    @staticmethod
+    def _as_range(value):
+        if isinstance(value, (int, float)):
+            value = (-float(value), float(value))
+        if len(value) != 2:
+            raise ValueError(f"range values must have length 2, got {value}")
+        return float(value[0]), float(value[1])
+
+    @staticmethod
+    def _deg2rad(value):
+        return float(value) * np.pi / 180.0
+
+    def _sample_angle(self, fixed_value, value_range):
+        if fixed_value is not None:
+            return self._deg2rad(fixed_value)
+        return self._deg2rad(np.random.uniform(value_range[0], value_range[1]))
+
+    def _sample_translation(self):
+        if self.fixed_trans_m is not None:
+            if len(self.fixed_trans_m) != 3:
+                raise ValueError("fixed_trans_m must contain three values")
+            return np.asarray(self.fixed_trans_m, dtype=np.float32)
+        return np.asarray(
+            [np.random.uniform(lo, hi) for lo, hi in self.trans_range_m],
+            dtype=np.float32,
+        )
+
+    @staticmethod
+    def _rotation_matrix(roll, pitch, yaw):
+        cr, sr = np.cos(roll), np.sin(roll)
+        cp, sp = np.cos(pitch), np.sin(pitch)
+        cy, sy = np.cos(yaw), np.sin(yaw)
+        rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]], dtype=np.float32)
+        ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]], dtype=np.float32)
+        rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]], dtype=np.float32)
+        return rz @ ry @ rx
+
+    def _sample_transform(self):
+        roll = self._sample_angle(self.fixed_roll_deg, self.roll_range_deg)
+        pitch = self._sample_angle(self.fixed_pitch_deg, self.pitch_range_deg)
+        yaw = self._sample_angle(self.fixed_yaw_deg, self.yaw_range_deg)
+        trans = self._sample_translation()
+        transform = np.eye(4, dtype=np.float32)
+        transform[:3, :3] = self._rotation_matrix(roll, pitch, yaw)
+        transform[:3, 3] = trans
+        return transform, roll, pitch, yaw, trans
+
+    def __call__(self, results):
+        if self.prob <= 0.0 or np.random.rand() > self.prob:
+            return results
+
+        transform, roll, pitch, yaw, trans = self._sample_transform()
+        transform_inv = np.linalg.inv(transform).astype(np.float32)
+        results['lidar2img'] = [
+            (np.asarray(mat, dtype=np.float32) @ transform_inv).astype(np.float32)
+            for mat in results['lidar2img']
+        ]
+        results['calib_perturbation'] = dict(
+            roll_deg=roll * 180.0 / np.pi,
+            pitch_deg=pitch * 180.0 / np.pi,
+            yaw_deg=yaw * 180.0 / np.pi,
+            trans_m=trans.tolist(),
+        )
+        return results
+
     
 @PIPELINES.register_module()
 class TransformDepthmap(object):
