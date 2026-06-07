@@ -137,11 +137,16 @@ class RaCFormer(MVXTwoStageDetector):
             radar_points[i] = radar_point
 
         voxels, num_points, coors = self.radar_voxelize(radar_points)
+        batch_size = len(radar_points)
+        if coors.shape[0] == 0:
+            rad_bev_feas = self.radar_bev_conv(
+                torch.zeros(batch_size, 64, 128, 128,
+                            device=coors.device, dtype=torch.float32)
+            )
+            return rad_bev_feas
         radar_features = self.radar_voxel_encoder(voxels, num_points, coors).to(torch.float32) ## pillar feature
 
-        batch_size = coors[-1, 0] + 1
-
-        radar_features = radar_features.squeeze()
+        radar_features = radar_features.squeeze(1)
         rad_bev_feas = self.radar_middle_encoder(radar_features, coors, batch_size)
 
         rad_bev_feas = self.radar_bev_conv(rad_bev_feas)  
