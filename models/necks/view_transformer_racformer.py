@@ -665,8 +665,15 @@ class LSSViewTransformerBEVDepth_racformer(LSSViewTransformer_racformer):
 
     
     @force_fp32()
-    def get_depth_loss(self, depth_labels, depth_preds, downsample=0):
+    def get_depth_loss(self, depth_labels, depth_preds, downsample=0, sample_weights=None):
         BN, _, H, W = depth_preds.shape
+        if sample_weights is not None:
+            B = len(sample_weights)
+            if BN % B != 0:
+                raise ValueError(f"depth batch {BN} is not divisible by {B} sample weights")
+            N = BN // B
+            sample_weights = depth_preds.new_tensor(sample_weights)
+            sample_weights = sample_weights.view(B, 1, 1, 1).expand(B, N, H, W).reshape(BN, H, W)
         depth_labels, depth_values = self.get_downsampled_depth(depth_labels, downsample)
         depth_preds = depth_preds.permute(0, 2, 3,
                                           1).contiguous()
@@ -675,7 +682,15 @@ class LSSViewTransformerBEVDepth_racformer(LSSViewTransformer_racformer):
         depth_preds = depth_preds[fg_mask]
         depth_values = depth_values[fg_mask]
 
-        dep_logits_loss = self.loss_depth_weight * self.loss_func(depth_preds, depth_labels).sum() / max(1.0, fg_mask.sum())
+        depth_loss = self.loss_func(depth_preds, depth_labels)
+        if sample_weights is not None:
+            sample_weights = sample_weights[fg_mask]
+            if depth_loss.dim() > sample_weights.dim():
+                sample_weights = sample_weights.view(-1, *([1] * (depth_loss.dim() - 1)))
+            denom = torch.clamp(fg_mask.sum().to(depth_loss.dtype), min=1.0)
+            dep_logits_loss = self.loss_depth_weight * (depth_loss * sample_weights).sum() / denom
+        else:
+            dep_logits_loss = self.loss_depth_weight * depth_loss.sum() / max(1.0, fg_mask.sum())
 
         return dep_logits_loss
     
@@ -699,5 +714,3 @@ class LSSViewTransformerBEVDepth_racformer(LSSViewTransformer_racformer):
         tran_feat = x[:, self.D:self.D + self.out_channels, ...]
         
         return self.view_transform(x, depth_digit, tran_feat, img_metas)
-
-

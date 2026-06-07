@@ -144,6 +144,11 @@ class RaCFormer_head(DETRHead):
         init_query_feat = torch.cat([init_query_feat, indicator0], dim=1).repeat(batch_size, 1, 1)
 
         if self.training and self.dn_enabled:
+            sample_weights = torch.as_tensor(
+                [float(m.get('generated_sample_weight', 1.0)) for m in img_metas],
+                dtype=torch.float32,
+                device=device,
+            )
             targets = [{
                 'bboxes': torch.cat([m['gt_bboxes_3d'].gravity_center,
                                      m['gt_bboxes_3d'].tensor[:, 3:]], dim=1).cuda(),
@@ -236,6 +241,7 @@ class RaCFormer_head(DETRHead):
                 'batch_idx': torch.as_tensor(batch_idx).long(),
                 'map_known_indice': torch.as_tensor(map_known_indice).long(),
                 'known_lbs_bboxes': (known_labels, known_bboxs),
+                'sample_weights': sample_weights,
                 'pad_size': dn_pad_size
             }
         else:
@@ -254,18 +260,23 @@ class RaCFormer_head(DETRHead):
         batch_idx = mask_dict['batch_idx'].long()
         bid = batch_idx[known_indice]
         num_tgt = known_indice.numel()
+        sample_weights = mask_dict.get('sample_weights')
+        known_sample_weights = None
+        if sample_weights is not None:
+            known_sample_weights = sample_weights.to(cls_scores.device)[bid]
 
         if len(cls_scores) > 0:
             cls_scores = cls_scores.permute(1, 2, 0, 3)[(bid, map_known_indice)].permute(1, 0, 2)
             bbox_preds = bbox_preds.permute(1, 2, 0, 3)[(bid, map_known_indice)].permute(1, 0, 2)
 
-        return known_labels, known_bboxs, cls_scores, bbox_preds, num_tgt
+        return known_labels, known_bboxs, cls_scores, bbox_preds, num_tgt, known_sample_weights
 
     def dn_loss_single(self,
                        cls_scores,
                        bbox_preds,
                        known_bboxs,
                        known_labels,
+                       known_sample_weights=None,
                        num_total_pos=None):        
         # Compute the average number of gt boxes accross all gpus
         num_total_pos = cls_scores.new_tensor([num_total_pos])
@@ -273,8 +284,12 @@ class RaCFormer_head(DETRHead):
 
         # cls loss
         cls_scores = cls_scores.reshape(-1, self.cls_out_channels)
+        if known_sample_weights is None:
+            known_sample_weights = cls_scores.new_ones(known_labels.shape)
+        else:
+            known_sample_weights = known_sample_weights.to(cls_scores.device).float()
         bbox_weights = torch.ones_like(bbox_preds)
-        label_weights = torch.ones_like(known_labels)
+        label_weights = known_sample_weights
         loss_cls = self.loss_cls(
             cls_scores,
             known_labels.long(),
@@ -286,6 +301,7 @@ class RaCFormer_head(DETRHead):
         bbox_preds = bbox_preds.reshape(-1, bbox_preds.size(-1))
         normalized_bbox_targets = normalize_bbox(known_bboxs)
         isnotnan = torch.isfinite(normalized_bbox_targets).all(dim=-1)
+        bbox_weights = bbox_weights * known_sample_weights.view(-1, 1)
         bbox_weights = bbox_weights * self.code_weights
         loss_bbox = self.loss_bbox(
             bbox_preds[isnotnan, :10],
@@ -301,16 +317,18 @@ class RaCFormer_head(DETRHead):
 
     @force_fp32(apply_to=('preds_dicts'))
     def calc_dn_loss(self, loss_dict, preds_dicts, num_dec_layers):
-        known_labels, known_bboxs, cls_scores, bbox_preds, num_tgt = \
+        known_labels, known_bboxs, cls_scores, bbox_preds, num_tgt, known_sample_weights = \
             self.prepare_for_dn_loss(preds_dicts['dn_mask_dict'])
 
         all_known_bboxs_list = [known_bboxs for _ in range(num_dec_layers)]
         all_known_labels_list = [known_labels for _ in range(num_dec_layers)]
+        all_known_sample_weights_list = [known_sample_weights for _ in range(num_dec_layers)]
         all_num_tgts_list = [num_tgt for _ in range(num_dec_layers)]
 
         dn_losses_cls, dn_losses_bbox = multi_apply(
             self.dn_loss_single, cls_scores, bbox_preds,
-            all_known_bboxs_list, all_known_labels_list, all_num_tgts_list)
+            all_known_bboxs_list, all_known_labels_list,
+            all_known_sample_weights_list, all_num_tgts_list)
 
         loss_dict['loss_cls_dn'] = dn_losses_cls[-1]
         loss_dict['loss_bbox_dn'] = dn_losses_bbox[-1]
@@ -356,16 +374,26 @@ class RaCFormer_head(DETRHead):
                     bbox_preds_list,
                     gt_bboxes_list,
                     gt_labels_list,
+                    sample_weights=None,
                     gt_bboxes_ignore_list=None):
         assert gt_bboxes_ignore_list is None, \
             'Only supports for gt_bboxes_ignore setting to None.'
         num_imgs = len(cls_scores_list)
         gt_bboxes_ignore_list = [gt_bboxes_ignore_list for _ in range(num_imgs)]
+        if sample_weights is None:
+            sample_weights = [1.0 for _ in range(num_imgs)]
 
         (labels_list, label_weights_list, bbox_targets_list,
          bbox_weights_list, pos_inds_list, neg_inds_list) = multi_apply(
                 self._get_target_single, cls_scores_list, bbox_preds_list,
              gt_labels_list, gt_bboxes_list, gt_bboxes_ignore_list)
+        for i, sample_weight in enumerate(sample_weights):
+            if torch.is_tensor(sample_weight):
+                sample_weight = float(sample_weight.detach().item())
+            else:
+                sample_weight = float(sample_weight)
+            label_weights_list[i] = label_weights_list[i] * sample_weight
+            bbox_weights_list[i] = bbox_weights_list[i] * sample_weight
         num_total_pos = sum((inds.numel() for inds in pos_inds_list))
         num_total_neg = sum((inds.numel() for inds in neg_inds_list))
         return (labels_list, label_weights_list, bbox_targets_list,
@@ -376,12 +404,13 @@ class RaCFormer_head(DETRHead):
                     bbox_preds,
                     gt_bboxes_list,
                     gt_labels_list,
+                    sample_weights=None,
                     gt_bboxes_ignore_list=None):
         num_imgs = cls_scores.size(0)
         cls_scores_list = [cls_scores[i] for i in range(num_imgs)]
         bbox_preds_list = [bbox_preds[i] for i in range(num_imgs)]
         cls_reg_targets = self.get_targets(cls_scores_list, bbox_preds_list,
-                gt_bboxes_list, gt_labels_list, gt_bboxes_ignore_list)
+                gt_bboxes_list, gt_labels_list, sample_weights, gt_bboxes_ignore_list)
         (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
          num_total_pos, num_total_neg) = cls_reg_targets
 
@@ -397,9 +426,9 @@ class RaCFormer_head(DETRHead):
             num_total_neg * self.bg_cls_weight
         if self.sync_cls_avg_factor:
             cls_avg_factor = reduce_mean(
-                cls_scores.new_tensor([cls_avg_factor]))
+                cls_scores.new_tensor([cls_avg_factor])).item()
 
-        cls_avg_factor = max(cls_avg_factor, 1)
+        cls_avg_factor = max(cls_avg_factor, 1.0)
         loss_cls = self.loss_cls(
             cls_scores, labels, label_weights, avg_factor=cls_avg_factor)
 
@@ -431,6 +460,7 @@ class RaCFormer_head(DETRHead):
              gt_bboxes_list,
              gt_labels_list,
              preds_dicts,
+             sample_weights=None,
              gt_bboxes_ignore=None):
         assert gt_bboxes_ignore is None, \
             f'{self.__class__.__name__} only supports ' \
@@ -449,11 +479,12 @@ class RaCFormer_head(DETRHead):
 
         all_gt_bboxes_list = [gt_bboxes_list for _ in range(num_dec_layers)]
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]
+        all_sample_weights_list = [sample_weights for _ in range(num_dec_layers)]
         all_gt_bboxes_ignore_list = [gt_bboxes_ignore for _ in range(num_dec_layers)]
 
         losses_cls, losses_bbox = multi_apply(
             self.loss_single, all_cls_scores, all_bbox_preds,
-            all_gt_bboxes_list, all_gt_labels_list, 
+            all_gt_bboxes_list, all_gt_labels_list, all_sample_weights_list,
             all_gt_bboxes_ignore_list)
 
         loss_dict = dict()
@@ -465,7 +496,8 @@ class RaCFormer_head(DETRHead):
             ]
             enc_loss_cls, enc_losses_bbox = \
                 self.loss_single(enc_cls_scores, enc_bbox_preds,
-                                 gt_bboxes_list, binary_labels_list, gt_bboxes_ignore)
+                                 gt_bboxes_list, binary_labels_list, sample_weights,
+                                 gt_bboxes_ignore)
             loss_dict['enc_loss_cls'] = enc_loss_cls
             loss_dict['enc_loss_bbox'] = enc_losses_bbox
 
