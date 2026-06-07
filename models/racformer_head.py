@@ -19,6 +19,11 @@ class RaCFormer_head(DETRHead):
                  query_denoising=True,
                  query_denoising_groups=10,
                  num_clusters=5,
+                 radar_query_init=False,
+                 radar_query_topk=180,
+                 radar_query_use_velocity=False,
+                 radar_query_min_range=1.0,
+                 radar_query_score='rcs_speed',
                  bbox_coder=None,
                  code_size=10,
                  code_weights=[1.0] * 10,
@@ -35,6 +40,11 @@ class RaCFormer_head(DETRHead):
         self.embed_dims = in_channels
 
         self.num_clusters = num_clusters
+        self.radar_query_init = bool(radar_query_init)
+        self.radar_query_topk = int(radar_query_topk)
+        self.radar_query_use_velocity = bool(radar_query_use_velocity)
+        self.radar_query_min_range = float(radar_query_min_range)
+        self.radar_query_score = radar_query_score
 
         super(RaCFormer_head, self).__init__(num_classes, in_channels, train_cfg=train_cfg, test_cfg=test_cfg, **kwargs)
 
@@ -79,13 +89,76 @@ class RaCFormer_head(DETRHead):
         return theta_d
 
 
-    def forward(self, mlvl_feats, lss_bev_feats, radar_bev_feats, img_metas):
+
+    def _score_radar_points(self, points):
+        if self.radar_query_score == 'rcs':
+            return points[:, 3].abs()
+        if self.radar_query_score == 'speed':
+            return torch.norm(points[:, 4:6], dim=-1)
+        if self.radar_query_score == 'range':
+            return torch.norm(points[:, :2], dim=-1)
+        if self.radar_query_score == 'rcs_speed':
+            return points[:, 3].abs() + torch.norm(points[:, 4:6], dim=-1)
+        raise ValueError(f'Unsupported radar_query_score={self.radar_query_score}')
+
+    def _radar_points_to_query_bbox(self, query_bbox, radar_query_points):
+        if (
+            not self.radar_query_init
+            or self.radar_query_topk <= 0
+            or radar_query_points is None
+        ):
+            return query_bbox
+
+        if len(radar_query_points) != query_bbox.shape[0]:
+            return query_bbox
+
+        query_bbox = query_bbox.clone()
+        max_queries = min(self.radar_query_topk, query_bbox.shape[1])
+        pc_range = query_bbox.new_tensor(self.pc_range)
+        x_min, y_min, x_max, y_max = pc_range[0], pc_range[1], pc_range[3], pc_range[4]
+
+        for batch_idx, points in enumerate(radar_query_points):
+            if points is None or points.numel() == 0:
+                continue
+            points = points.to(device=query_bbox.device, dtype=query_bbox.dtype)
+            finite = torch.isfinite(points[:, :6]).all(dim=-1)
+            in_range = (
+                (points[:, 0] >= x_min)
+                & (points[:, 0] <= x_max)
+                & (points[:, 1] >= y_min)
+                & (points[:, 1] <= y_max)
+            )
+            far_enough = torch.norm(points[:, :2], dim=-1) >= self.radar_query_min_range
+            keep = finite & in_range & far_enough
+            points = points[keep]
+            if points.numel() == 0:
+                continue
+
+            scores = self._score_radar_points(points)
+            k = min(max_queries, points.shape[0])
+            topk = torch.topk(scores, k=k, largest=True).indices
+            selected = points[topk]
+            xy_norm = torch.empty((k, query_bbox.shape[-1]), dtype=query_bbox.dtype, device=query_bbox.device)
+            xy_norm.zero_()
+            xy_norm[:, 0] = (selected[:, 0] - x_min) / (x_max - x_min)
+            xy_norm[:, 1] = (selected[:, 1] - y_min) / (y_max - y_min)
+            xy_norm[:, 2:] = query_bbox[batch_idx, :k, 2:]
+            radar_theta_d = xy2theta_d_coods(xy_norm.unsqueeze(0)).squeeze(0)
+
+            query_bbox[batch_idx, :k, :2] = radar_theta_d[:, :2]
+            if self.radar_query_use_velocity:
+                query_bbox[batch_idx, :k, 8:10] = selected[:, 4:6]
+
+        return query_bbox
+
+    def forward(self, mlvl_feats, lss_bev_feats, radar_bev_feats, img_metas, radar_query_points=None):
         query_bbox = self.init_query_bbox.weight.clone()  # [Q, 10]
         
         # query denoising
         B = lss_bev_feats.shape[0]
 
         query_bbox = query_bbox.view(1, self.num_query, 10).repeat(B, 1, 1)
+        query_bbox = self._radar_points_to_query_bbox(query_bbox, radar_query_points)
 
         query_bbox, query_feat, attn_mask, mask_dict = self.prepare_for_dn_input(B, query_bbox, self.label_enc, img_metas)
 

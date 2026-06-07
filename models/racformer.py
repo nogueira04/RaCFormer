@@ -362,6 +362,7 @@ class RaCFormer(MVXTwoStageDetector):
                           gt_labels_3d,
                           gt_depth,
                           img_metas,
+                          radar_query_points=None,
                           gt_bboxes_ignore=None):
         """Forward function for point cloud branch.
         Args:
@@ -445,6 +446,9 @@ class RaCFormer(MVXTwoStageDetector):
         # gt_depth contains all frames, but depth loss is only computed for first frame
         # Slice to first num_cams cameras (first frame only)
         gt_depth_first_frame = gt_depth[:, :self.num_cams].contiguous()
+        radar_query_points = None
+        if isinstance(radar_points, (list, tuple)) and len(radar_points) > 0:
+            radar_query_points = radar_points[0]
         losses = self.forward_pts_train(img_feats, bev_feats, radar_bev_feats, depth, gt_bboxes_3d, gt_labels_3d, gt_depth_first_frame, img_metas, gt_bboxes_ignore)
         return losses
 
@@ -456,7 +460,7 @@ class RaCFormer(MVXTwoStageDetector):
         img = [img] if img is None else img
         return self.simple_test(img_metas[0], img[0], **kwargs)
 
-    def simple_test_pts(self, x, bev_feats, radar_bev_feats, img_metas, rescale=False):
+    def simple_test_pts(self, x, bev_feats, radar_bev_feats, img_metas, rescale=False, radar_query_points=None):
         outs = self.pts_bbox_head(x, bev_feats, radar_bev_feats, img_metas)
         bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas[0], rescale=rescale)
 
@@ -475,6 +479,7 @@ class RaCFormer(MVXTwoStageDetector):
         img_feats, bev_feats, radar_bev_feats, _ = self.extract_feat(img=img, radar_points=radar_points, radar_depth=radar_depth, radar_rcs=radar_rcs, img_metas=img_metas)
 
         bbox_list = [dict() for _ in range(len(img_metas))]
+        radar_query_points = radar_points[0] if isinstance(radar_points, (list, tuple)) and len(radar_points) > 0 else None
         bbox_pts = self.simple_test_pts(img_feats, bev_feats, radar_bev_feats, img_metas, rescale=rescale)
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
