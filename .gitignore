@@ -1,13 +1,15 @@
-*.png
-*.jpg
-*.jpeg
-*.JPG
-*.PNG
+# Local documentation/evidence notebooks live outside this repo.
+docs/
+repro/
 
-*.json
+# Generated images and reports.
 *.pdf
-*.md
+profile_trace*.json
+profile_results*.json
+submission_results*.json
 
+eval_results/
+eval_output/
 eval_outputs/
 outputs/
 video_outputs_3d/
@@ -121,7 +123,8 @@ venv.bak/
 .mypy_cache/
 
 # cython generated cpp
-data
+data/
+nuscenes_infos*.pkl
 .vscode
 .idea
 
@@ -131,11 +134,27 @@ data
 *.log.json
 work_dirs/
 exps/
+artifacts/
 *~
 mmdet3d/.mim
 
-# Pytorch
+# Model weights and deployment artifacts.
+checkpoints/
+pretrain/
 *.pth
+*.pt
+*.onnx
+*.trt
+*.engine
+*.plan
+*.dlc
+*.bin
+
+# Local OpenMMLab source checkouts.
+mmcv/
+mmdetection/
+mmdetection3d/
+.claude/
 
 # demo
 # *.jpg
