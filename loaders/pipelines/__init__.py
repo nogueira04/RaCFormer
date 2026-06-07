@@ -5,6 +5,7 @@ from .transforms import PadMultiViewImage, NormalizeMultiviewImage, PhotoMetricD
     RaCGlobalRotScaleTransImage
 
 from .formatng import RaCFormatBundle3D
+from . import night_augmentation  # register SimulateNight research transform
 
 __all__ = [
     'LoadMultiViewImageFromMultiSweeps', 'PadMultiViewImage', 'NormalizeMultiviewImage', 
