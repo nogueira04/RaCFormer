@@ -12,7 +12,7 @@ source /srv/nfs/shared/gnmp/miniconda3/etc/profile.d/conda.sh
 
 echo "=== STAGE 1: Extract DINOv3 scores (dino_extract) ==="
 conda activate dino_extract
-export HF_TOKEN=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
+: "${HF_TOKEN:?set HF_TOKEN in the environment before running (removed from repo)}"
 python research/experiments/exp_010_dino_scores.py
 
 echo ""

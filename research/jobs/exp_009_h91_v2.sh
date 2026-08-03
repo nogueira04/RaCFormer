@@ -19,7 +19,7 @@ python research/experiments/convert_predictions.py \
 echo ""
 echo "=== STAGE 1: DINOv3 reclassification (dino_extract) ==="
 conda activate dino_extract
-export HF_TOKEN=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
+: "${HF_TOKEN:?set HF_TOKEN in the environment before running (removed from repo)}"
 
 python research/experiments/exp_009_dino_classify.py \
     --predictions research/outputs/mini_preds/predictions_simple.pkl \

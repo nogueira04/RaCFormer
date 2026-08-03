@@ -8,7 +8,7 @@
 #SBATCH --error=/srv/nfs/shared/gnmp/RaCFormer/research/outputs/exp_009_h91.err
 
 cd /srv/nfs/shared/gnmp/RaCFormer
-export HF_TOKEN=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
+: "${HF_TOKEN:?set HF_TOKEN in the environment before running (removed from repo)}"
 
 echo "=== STAGE 1: DINOv3 reclassification (dino_extract env) ==="
 source /srv/nfs/shared/gnmp/miniconda3/etc/profile.d/conda.sh

@@ -11,6 +11,6 @@ source /srv/nfs/shared/gnmp/miniconda3/etc/profile.d/conda.sh
 conda activate dino_extract
 cd /srv/nfs/shared/gnmp/RaCFormer
 
-export HF_TOKEN=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
+: "${HF_TOKEN:?set HF_TOKEN in the environment before running (removed from repo)}"
 
 python research/experiments/compute_prototypes.py
