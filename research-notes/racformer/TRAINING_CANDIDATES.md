@@ -36,14 +36,15 @@ def generate_points(self):
 
 **Why it matters**: The core night-time problem is that image features are "confidently wrong" but the model doesn't know to ignore them. Training with random modality dropout teaches the model to function with degraded/missing inputs.
 
-**Implementation** (partially exists in codebase):
+**Implementation status**: Config stubs exist (`configs/racformer_r50_nuimg_704x256_f8_dropout*.py`),
+but the current tracked `models/racformer_transformer.py` does not accept `modality_dropout_*` arguments or
+implement the dropout branch. Restore or commit the model implementation before training from these configs.
+
+**Implementation target**:
 ```python
-# In racformer_transformer.py forward():
-if self.training:
-    if random.random() < 0.1:
-        img_feat = torch.zeros_like(img_feat)
-    if random.random() < 0.05:
-        radar_feat = torch.zeros_like(radar_feat)
+# In RaCFormerTransformerDecoderLayer.forward(), before self.fusion(...):
+if self.training and random.random() < p:
+    query_feat = torch.zeros_like(query_feat)  # camera-sampled branch after mixing
 ```
 
 **Training cost**: ~24h
