@@ -1,0 +1,32 @@
+{
+  "schema": "maxf1_thresholds/1",
+  "note": "null threshold means +inf (class had no predictions); all counts are 0 there",
+  "dist_th": 2.0,
+  "source_submission_sha256": "65c56b915bf8088d73a4865d9aa0a987485211a71cb5108f06e7ee337b4c86f3",
+  "source_crosscheck": "/srv/nfs/shared/gnmp/robust_study_runs/eval_oracle/e2_crosscheck_20260803T025251Z/crosscheck.json",
+  "generated_utc": "2026-08-03T02:54:59Z",
+  "thresholds": {
+    "car": 0.3867029547691345,
+    "truck": 0.37693268060684204,
+    "bus": 0.34808021783828735,
+    "trailer": 0.3399091362953186,
+    "construction_vehicle": 0.34154778718948364,
+    "pedestrian": 0.3420311510562897,
+    "motorcycle": 0.34762507677078247,
+    "bicycle": 0.3178001940250397,
+    "traffic_cone": 0.3656166195869446,
+    "barrier": 0.3680000305175781
+  },
+  "f1_at_threshold": {
+    "car": 0.8381986786127394,
+    "truck": 0.7245234922658015,
+    "bus": 0.791005291005291,
+    "trailer": 0.49600376116596145,
+    "construction_vehicle": 0.5073586367157242,
+    "pedestrian": 0.742102654229192,
+    "motorcycle": 0.7259395050412466,
+    "bicycle": 0.6851906591782442,
+    "traffic_cone": 0.7704175103654421,
+    "barrier": 0.7723699930830661
+  }
+}
