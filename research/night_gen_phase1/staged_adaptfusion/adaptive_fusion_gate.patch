@@ -1,0 +1,103 @@
+--- a/models/racformer_transformer.py
++++ b/models/racformer_transformer.py
+@@ -32,7 +32,8 @@
+                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
+                  spatial_shapes=(128, 128), 
+                  init_cfg=None,
+-                 num_cams=6):
++                 num_cams=6,
++                 adaptive_fusion_gate=False):
+         assert init_cfg is None, 'To prevent abnormal initialization ' \
+                             'behavior, init_cfg is not allowed to be set'
+         super(RaCFormerTransformer, self).__init__(init_cfg=init_cfg)
+@@ -43,7 +44,8 @@
+ 
+         self.decoder = RaCFormerTransformerDecoder(embed_dims, num_frames, num_points, num_points_bev, num_layers, num_levels, num_classes, code_size, \
+                                                    img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, pc_range=pc_range, num_ray=num_ray, \
+-                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams)
++                                                    d_region_list=d_region_list, spatial_shapes=spatial_shapes, num_cams=num_cams,
++                                                    adaptive_fusion_gate=adaptive_fusion_gate)
+ 
+     @torch.no_grad()
+     def init_weights(self):
+@@ -75,7 +77,8 @@
+                  d_region_list=[0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
+                  spatial_shapes=(128, 128), 
+                  init_cfg=None,
+-                 num_cams=6):
++                 num_cams=6,
++                 adaptive_fusion_gate=False):
+         super(RaCFormerTransformerDecoder, self).__init__(init_cfg)
+         self.num_layers = num_layers
+         self.pc_range = pc_range
+@@ -86,6 +89,7 @@
+             embed_dims, num_frames, num_points, num_points_bev, num_levels, num_classes, code_size, \
+                 img_depth_num=img_depth_num, bev_depth_num=bev_depth_num, num_ray=num_ray, pc_range=pc_range, \
+                     d_region_list=d_region_list, spatial_shapes=spatial_shapes,
++                    adaptive_fusion_gate=adaptive_fusion_gate,
+         )
+ 
+     @torch.no_grad()
+@@ -159,7 +163,8 @@
+                  pc_range=[], 
+                  d_region_list = [0.15, 0.1, 0.1, 0.08, 0.08, 0.05], 
+                  spatial_shapes=(128, 128), 
+-                 init_cfg=None):
++                 init_cfg=None,
++                 adaptive_fusion_gate=False):
+         super(RaCFormerTransformerDecoderLayer, self).__init__(init_cfg)
+ 
+         self.embed_dims = embed_dims
+@@ -191,6 +196,13 @@
+         self.norm3 = nn.LayerNorm(embed_dims)
+ 
+         self.fusion = nn.Linear(embed_dims*3, embed_dims)
++        self.adaptive_fusion_gate = adaptive_fusion_gate
++        if self.adaptive_fusion_gate:
++            self.fusion_gate = nn.Sequential(
++                nn.Linear(embed_dims * 3, embed_dims),
++                nn.ReLU(inplace=True),
++                nn.Linear(embed_dims, 3),
++            )
+ 
+         self.norm_radar_bev = nn.LayerNorm(embed_dims)
+         self.norm_lss_bev = nn.LayerNorm(embed_dims)
+@@ -226,6 +238,10 @@
+         nn.init.constant_(self.cls_branch[-1].bias, bias_init)
+         
+         xavier_init(self.fusion, distribution='uniform', bias=0.)
++        if self.adaptive_fusion_gate:
++            xavier_init(self.fusion_gate[0], distribution='uniform', bias=0.)
++            nn.init.zeros_(self.fusion_gate[-1].weight)
++            nn.init.zeros_(self.fusion_gate[-1].bias)
+ 
+     def refine_bbox(self, bbox_proposal, bbox_delta):
+         dz = inverse_sigmoid(bbox_proposal[..., 1:3])
+@@ -254,7 +270,19 @@
+         sampled_feat = self.sampling(query_bbox, query_feat, mlvl_feats, img_metas, d_region=self.d_region_list[layer])
+ 
+         query_feat = self.norm2(self.mixing(sampled_feat, query_feat))
+-        query_feat = self.norm_fusion(self.fusion(torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)))
++        fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
++        if self.adaptive_fusion_gate:
++            fusion_gate = torch.sigmoid(self.fusion_gate(fusion_input)) * 2.0
++            query_feat = query_feat * fusion_gate[..., 0:1]
++            query_radar_feat = query_radar_feat * fusion_gate[..., 1:2]
++            query_lss_feat = query_lss_feat * fusion_gate[..., 2:3]
++            fusion_input = torch.cat((query_feat, query_radar_feat, query_lss_feat), dim=-1)
++            if DUMP.enabled:
++                torch.save(
++                    fusion_gate.detach().mean(dim=(0, 1)),
++                    '{}/adaptive_fusion_gate_stage{}.pth'.format(DUMP.out_dir, DUMP.stage_count)
++                )
++        query_feat = self.norm_fusion(self.fusion(fusion_input))
+         query_feat = self.norm3(self.ffn(query_feat))
+ 
+         cls_score = self.cls_branch(query_feat)  # [B, Q, num_classes]
+@@ -766,4 +794,4 @@
+ #         reset = torch.sigmoid(self.reset_gate(x))
+ #         new_h_cand = torch.tanh(self.candidate_hidden(x))
+ #         h_curr = update * h_prev + reset * new_h_cand
+-#         return h_curr
+\ No newline at end of file
++#         return h_curr
