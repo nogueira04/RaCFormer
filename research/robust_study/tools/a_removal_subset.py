@@ -56,7 +56,21 @@ def main():
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--expect-samples", type=int, required=True)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--screen-samples", type=int, default=None,
+                        help="mini-screen mode (fault-families.md cross-family rule 3): run on "
+                             "the first N val samples instead of full val. The config must cap "
+                             "data.val.max_samples to the SAME N, and --expect-samples must "
+                             "equal it. A screen is a screen, never a result cell.")
     args = parser.parse_args()
+
+    if args.screen_samples is not None:
+        if args.expect_samples != args.screen_samples:
+            raise SystemExit(
+                "--screen-samples %d but --expect-samples %d; a screen's attestation must "
+                "expect exactly the screened sample count" %
+                (args.screen_samples, args.expect_samples))
+        print("[a_removal] SCREEN MODE: %d samples; this run is a mini-screen, NOT a result "
+              "cell and must never be read as one" % args.screen_samples, flush=True)
 
     repo = os.path.abspath(args.repo)
     if repo not in sys.path:
@@ -75,6 +89,13 @@ def main():
     from mmcv import Config
 
     cfg = Config.fromfile(args.config)
+    if args.screen_samples is not None:
+        cap = cfg.data.val.get("max_samples", None)
+        if cap != args.screen_samples:
+            raise SystemExit(
+                "screen mode wants %d samples but the config caps data.val.max_samples=%r; the "
+                "cap must be carried by the config file itself so its md5 pins the screen"
+                % (args.screen_samples, cap))
     cam_removal = cfg.get("cam_removal", None)
     if not cam_removal or not cam_removal.get("cameras"):
         raise SystemExit(
@@ -101,15 +122,29 @@ def main():
     driver_path = os.path.join(repo, "research/night_gen_phase1/eval_by_condition.py")
     driver = gate_b.load_driver(driver_path)
 
+    if args.screen_samples is not None:
+        # The frozen driver hard-refuses a capped val without --full-val, precisely so a full
+        # cell can never silently run on 300 samples. A mini-screen is the one sanctioned
+        # capped run, so the guard is RE-AIMED, not removed: it now insists the cap equals the
+        # declared screen size. The driver file itself is never modified.
+        def _screen_cap_guard(cfg_, full_val_flag, _n=args.screen_samples):
+            cap = getattr(cfg_.data.val, "max_samples", None)
+            if cap != _n:
+                raise SystemExit(
+                    "[a_removal] screen guard: cfg.data.val.max_samples=%r != declared "
+                    "screen size %d" % (cap, _n))
+        driver._abort_if_capped_val = _screen_cap_guard
+
     os.makedirs(args.out_dir, exist_ok=True)
     argv = [
         driver_path,
         "--config", args.config,
         "--weights", args.weights,
         "--out-dir", args.out_dir,
-        "--full-val",
         "--batch-size", str(args.batch_size),
     ]
+    if args.screen_samples is None:
+        argv.insert(-2, "--full-val")
     print("[a_removal] cell=%s cameras=%s" % (cell, ",".join(cameras)), flush=True)
     print("[a_removal] driver argv: %s" % " ".join(argv[1:]), flush=True)
 
